@@ -7,97 +7,227 @@ enum datatype{
     bool8=2
 };
 
+class schema{
+    public:
+        string table_name;
+        int row_size;
+        int page_size;
+        int num_of_cols;
+        int* col_offset;
+        string *column_name;
+        datatype *dtypes;
+    
+        void load_schema(string db_name,string table_name){
+            string file_name = "..\\data\\" + db_name + '_' + table_name + ".schema";
+            ifstream in(file_name,ios::binary);
+            unsigned char buffer[512]={'\0'};
+
+            if(!in.is_open()){
+            cout << "Failed to open file!" << endl;
+            return;
+            }
+
+            in.seekg(0, ios::end);
+            size_t size = in.tellg();
+            in.seekg(0, ios::beg);
+
+            in.read((char*)buffer, size);
+
+            //initialise the properties of schema
+            this->table_name=table_name;
+
+            uint8_t temp8;
+            uint16_t temp16;
+            uint32_t temp32;
+    
+            memcpy(&temp8,buffer,1);
+            num_of_cols=temp8;
+
+            //initialise the pointers
+            col_offset=new int[num_of_cols];
+            column_name=new string[num_of_cols];
+            dtypes=new datatype[num_of_cols];
+            
+            memcpy(&temp16,buffer+1,2);
+            row_size=temp16;
+            
+            memcpy(&temp16,buffer+3,2);
+            page_size=temp16;
+            
+            //data about the cols
+            int k=0;
+            int i=6+table_name.size();
+            col_offset[0]=0;
+            while(k<num_of_cols){
+                memcpy(&temp8,buffer +i,1);
+                i++;
+                
+                string name(reinterpret_cast<const char*>(buffer + i), temp8);
+                column_name[k] = name;
+                i += temp8;
+
+                memcpy(&temp8,buffer+i,1);
+                dtypes[k]=(datatype)temp8;
+                i++;
+                
+                if(k+1<num_of_cols){
+                    memcpy(&temp16,buffer+i,2);
+                    col_offset[k+1]=temp16+col_offset[k];
+                    i+=2;
+                }
+                
+                k++;
+            }
+        }
+
+        void create_schema_file(string db_name,string table_name,int num_of_cols,string *name,int *size,datatype* type){
+            //create a .schema file in disk
+            string file_name = "..\\data\\" + db_name + '_' + table_name + ".schema";
+            ofstream out(file_name,ios::binary | ios::trunc);
+            unsigned char buffer[512]={'\0'};
+
+            if(!out.is_open()){
+            cout << "Failed to open file!" << endl;
+            return;
+            }
+
+            //basic information about table
+            memcpy(buffer,&num_of_cols,1);
+       
+            uint16_t row_size = 0 ;
+            for(int i=0;i<num_of_cols;i++) row_size+=size[i];
+            memcpy(buffer+1,&row_size,2);
+              
+            uint16_t page_size = 4096;
+            memcpy(buffer+3,&page_size,2);
+            
+            uint8_t tb_name_len = table_name.length();
+            memcpy(buffer+5,&tb_name_len,1);
+
+            memcpy(buffer+6,table_name.c_str(),table_name.length());
+
+
+            //insert information about coloumn
+            int i = 6 + table_name.length();
+            for(int k=0;k<num_of_cols;k++){
+                const uint8_t  len = name[k].length();
+                memcpy(buffer+i,&len,1);
+                // i++;
+
+                memcpy(buffer+i+1,name[k].c_str(),len);
+                i+=len+1;
+
+                memcpy(buffer+i,&type[k],1);
+                i+=1;
+
+                memcpy(buffer+i,&size[k],2);
+                i+=2;
+            }
+
+            out.write((char*)buffer,i);
+            out.close(); 
+        }
+
+        void print_schema(){
+
+            cout<<table_name<<endl;
+            cout<<row_size<<endl<<page_size<<endl<<num_of_cols<<endl;;
+
+            for(int i=0;i<num_of_cols;i++){
+                cout<<column_name[i]<<" "<<(datatype)dtypes[i]<<"("<<col_offset[i]<<")"<<endl;
+            }
+            
+        }
+
+
+        int getColumnOffset(int colIndex){}	
+        int getColumnSize(int colIndex){}	
+        datatype getColumnType(int colIndex){}
+};
 
 
 class buffer{
     public:
         int size;
-        int num_of_col;
         unsigned char* row_buffer;
-        int* col_offset;
-        datatype *dtypes;
 
-    buffer(int s,int* cols,int n,datatype *d){
-        this->num_of_col=n;
-        this->size=s;
+    buffer(){
+        this->size=4096;
         row_buffer = new unsigned char[size];
-        col_offset = cols;
-        this->dtypes=d;
     }
 
-    void fill_buffer(){
-    // Row offsets
-    int row_size = 36;
+    void* convert(string data, datatype dt,int limit){
+        void* ptr;
+        char nul='\0';
 
-    // --- Row 1 ---
-    unsigned char name1[10] = {'A','L','I','C','E','\0','\0','\0','\0','\0'};
-    uint32_t marks1 = 10;
-    unsigned char addr1[20] = {'D','E','L','H','I','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0'};
-    unsigned char gender1[1] = {'F'};
-    unsigned char dis1[1] = {'T'};
-    memcpy(row_buffer + 0*row_size + 0, name1, 10);
-    memcpy(row_buffer + 0*row_size + 10, &marks1, 4);
-    memcpy(row_buffer + 0*row_size + 14, addr1, 20);
-    memcpy(row_buffer + 0*row_size + 34, gender1, 1);
-    memcpy(row_buffer + 0*row_size + 35, dis1, 1);
+        switch(dt){
+            case 0:
+            *(uint32_t*)ptr = stoi(data);
+            break;
 
-    // --- Row 2 ---
-    unsigned char name2[10] = {'B','O','B','\0','\0','\0','\0','\0','\0','\0'};
-    uint32_t marks2 = 20;
-    unsigned char addr2[20] = {'M','U','M','B','A','I','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0'};
-    unsigned char gender2[1] = {'M'};
-    unsigned char dis2[1] = {'F'};
-    memcpy(row_buffer + 1*row_size + 0, name2, 10);
-    memcpy(row_buffer + 1*row_size + 10, &marks2, 4);
-    memcpy(row_buffer + 1*row_size + 14, addr2, 20);
-    memcpy(row_buffer + 1*row_size + 34, gender2, 1);
-    memcpy(row_buffer + 1*row_size + 35, dis2, 1);
+            case 1:
+            memcpy(ptr,data.c_str(),data.length());
+            memset((unsigned char*)ptr + data.length(), nul, limit -  data.length());
+            break; 
 
-    // --- Row 3 --- 
-    unsigned char name3[10] = {'C','H','A','R','L','I','E','\0','\0','\0'};
-    uint32_t marks3 = 30;
-    unsigned char addr3[20] = {'C','H','E','N','N','A','I','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0'};
-    unsigned char gender3[1] = {'M'};
-    unsigned char dis3[1] = {'T'};
-    memcpy(row_buffer + 2*row_size + 0, name3, 10);
-    memcpy(row_buffer + 2*row_size + 10, &marks3, 4);
-    memcpy(row_buffer + 2*row_size + 14, addr3, 20);
-    memcpy(row_buffer + 2*row_size + 34, gender3, 1);
-    memcpy(row_buffer + 2*row_size + 35, dis3, 1);
+            case 2:
+            if(data=="1") {
+                *(bool*)ptr=true;
+            }
+            else {
+                *(bool*)ptr=false;
+            }
+            break;
+        }
 
-    // --- Row 4 ---
-    unsigned char name4[10] = {'D','A','V','I','D','\0','\0','\0','\0','\0'};
-    uint32_t marks4 = 40;
-    unsigned char addr4[20] = {'K','O','L','K','A','T','A','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0'};
-    unsigned char gender4[1] = {'M'};
-    unsigned char dis4[1] = {'F'};
-    memcpy(row_buffer + 3*row_size + 0, name4, 10);
-    memcpy(row_buffer + 3*row_size + 10, &marks4, 4);
-    memcpy(row_buffer + 3*row_size + 14, addr4, 20);
-    memcpy(row_buffer + 3*row_size + 34, gender4, 1);
-    memcpy(row_buffer + 3*row_size + 35, dis4, 1);
-
-    // --- Row 5 ---
-    unsigned char name5[10] = {'E','M','M','A','\0','\0','\0','\0','\0','\0'};
-    uint32_t marks5 = 50;
-    unsigned char addr5[20] = {'P','U','N','E','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0','\0'};
-    unsigned char gender5[1] = {'F'};
-    unsigned char dis5[1] = {'F'};
-    memcpy(row_buffer + 4*row_size + 0, name5, 10);
-    memcpy(row_buffer + 4*row_size + 10, &marks5, 4);
-    memcpy(row_buffer + 4*row_size + 14, addr5, 20);
-    memcpy(row_buffer + 4*row_size + 34, gender5, 1);
-    memcpy(row_buffer + 4*row_size + 35, dis5, 1);
+        return ptr;
     }
 
-    void print(){
-        int row_size=col_offset[num_of_col];
-        int rows = size/row_size;
+    void fill_buffer(schema &s,string* data,int size_of_data){
+        int current_row=0;
+        int total_rows=size_of_data/s.num_of_cols;
+        this->size=s.row_size * total_rows;
+        char nul='\0';
+
+        while(current_row < total_rows){
+            int current_row_start = current_row*s.row_size;
+            int current_col=0;
+
+            while(current_col < s.num_of_cols){
+                int current_col_start = current_row_start + s.col_offset[current_col];
+                int index = current_row*s.num_of_cols + current_col;
+                int limit = (current_col+1==s.num_of_cols)? s.row_size - s.col_offset[current_col] : 
+                s.col_offset[current_col+1]-s.col_offset[current_col] ;
+
+                void* ptr= convert(data[index],s.dtypes[current_col],limit);
+                memcpy(row_buffer+current_col_start,ptr,limit);
+    
+                current_col++;
+            }
+
+            current_row++;
+        }
+    }
+
+    void read_buffer(string path){
+        ifstream out(path,ios::binary);
+
+        out.seekg(0, ios::end);
+        size_t s = out.tellg();
+        out.seekg(0, ios::beg);
+
+        out.read((char*) row_buffer,s);
+        this->size=s;
+    }
+
+    void print_buffer(schema &s){
+        int rows = size / s.row_size;
+
         for(int i=0;i<rows;i++){//i is the number of row
-            const unsigned char* current_row_start = row_buffer + (i * row_size);
-            for(int k=0;k<num_of_col ;k++){//k is the column
-                datatype type = dtypes[k];
-                const unsigned char* col_data_ptr = current_row_start + col_offset[k];
+            const unsigned char* current_row_start = row_buffer + (i * s.row_size);
+            for(int k=0;k<s.num_of_cols ;k++){//k is the column
+                datatype type = s.dtypes[k];
+                const unsigned char* col_data_ptr = current_row_start + s.col_offset[k];
 
                 switch(type){
                     case int32: 
@@ -107,14 +237,15 @@ class buffer{
                     break;
 
                     case text:{
-                    int text_length = col_offset[k+1] - col_offset[k];
+                    int text_length = s.col_offset[k+1] - s.col_offset[k];
                     for(int x=0;x<text_length;x++){
                     cout <<col_data_ptr[x];
                     }cout<<" ";
                     break;}
 
                     case bool8:
-                    if(col_data_ptr[0]=='T'){
+
+                    if((col_data_ptr[0]&1)==1){
                         cout<<"True"<<" ";
                     }else{
                     cout<<"false"<<" ";
@@ -134,59 +265,147 @@ class database{
         db_name="naff";
     }
 
-    void create_table(string table_name){
+    bool table_exists(string tb_name){
+        string file_name="..\\data\\" + this->db_name + '_' + tb_name + ".tbl";
+        ifstream f(file_name);
+        bool exists=f.is_open();
+        f.close();
+        return exists;
+    }
+    bool schema_exists(string tb_name){
+        string file_name="..\\data\\" + this->db_name + '_' + tb_name + ".schema";
+        ifstream f(file_name);
+        bool exists=f.is_open();
+        f.close();
+        return exists;
+    }
+
+   
+    
+    void create_table(string table_name, int num_of_cols, string *name, int *size, datatype* type){
         string file_name="..\\data\\" + this->db_name + '_' + table_name + ".tbl";
+
+        //check if table exists
+        if(table_exists(table_name)){
+            cout<<"table already exists"<<endl;
+            return;
+        }
+
+
+        //create schema file
+        schema s;
+        s.create_schema_file(this->db_name,table_name,num_of_cols,name,size,type);
+
         ofstream out(file_name);
         out.close();
+
+        cout<<"table created"<<endl;
+        return;
     }
 
-    void insert_into_table(string table_name,buffer b){
+    void insert_into_table(string table_name,string* data,int size_of_data){
         string file_name="..\\data\\" + this->db_name + '_' + table_name + ".tbl";
-        ofstream out(file_name,ios::binary | ios::app);
 
-
-        if(!out.is_open()){return;}//if not open, file doesnt exist 
-
-        // reads schema and generates buffer
-        // disk write
-
-        out.write((char*)b.row_buffer,b.size);
-
-        out.close();
-    }
-
-    void select_from_table(string table_name,buffer b){
-        string file_name="..\\data\\" + this->db_name + '_' + table_name + ".tbl";
-        ifstream out(file_name,ios::binary );
-
-        if(!out.is_open()){return;}//if not open, file doesnt exist
-
-        // reads schema and generates buffer
-        // disk read
+        //check if table exists
+        if(!table_exists(table_name) || !schema_exists(table_name)){
+            cout<<"table or schema doesn't exists"<<endl;
+            return;
+        }
         
-        out.read((char*)b.row_buffer,b.size);
+        //open the file
+        ofstream out(file_name,ios::binary | ios::app);
+        
+        
+        // reads schema 
+        schema s;
+        s.load_schema(this->db_name,table_name);
+        
+        //verify schema and data
+        buffer b;
+        // if(b.verify_data(s,data,size_of_data)){
+        //     cout<<"invalid data"<<endl;
+        //     return;
+        // }
+        
+        //generate buffer
+        b.fill_buffer(s,data,size_of_data);
+        
+        
+        // disk write
+        out.write((char*)b.row_buffer,b.size);
+        
         out.close();
+        
+        cout<<"data isnerted"<<endl;
+        return;
+    }
+
+    void select_from_table(string table_name){
+        string file_name="..\\data\\" + this->db_name + '_' + table_name + ".tbl";
+
+        //check if table exists
+        if(!table_exists(table_name) && !schema_exists(table_name)){
+            cout<<"table or schema doesn't exists"<<endl;
+            return;
+        }
+
+        //open the file
+        ifstream out(file_name,ios::binary);
+
+        // reads schema 
+        schema s;
+        s.load_schema(this->db_name,table_name);
+
+        //generate buffer
+        buffer b;
+        b.read_buffer(file_name);
+
+        //print the data
+        b.print_buffer(s);
+
+        out.close();
+        return;
     }
 };
 
 int main(){
- 
-    database d;
-    // d.create_table("files"); 
+    // int size[]={10,11,4,1};
+    // string name[]={"name","enrollment","marks","pass"};
+    // datatype t[]={text,text,int32,bool8};
 
-    // // write a table
-    // int col[6]={0,10,14,34,35,36};
-    // datatype dt[5]={int32,text,int32,int32,bool8};
-    // buffer b(180,col,5,dt);
-    // b.fill_buffer();
-    // d.insert_into_table("files",b);
-    
-    
-    
-    // // read a table
-    // int col2[6]={0,10,14,34,35,36};
-    // datatype dt[5]={text,int32,text,text,bool8};
-    // buffer b2(180,col2,5,dt);
-    // d.select_from_table("files",b2);
-    // b2.print();
+    // string data[]={"nafeel","2023BCSE080","67","1","raafid","2023BCSE030","90","1","irfan","2023BCSE068","22","0"};
+
+
+    // database d;
+    // d.create_table("tst",4,name,size,t);
+    // d.insert_into_table("tst",data,12);
+    // d.select_from_table("tst");
+
+
+    // --- Define schema ---
+    int size[] = {20, 11, 4, 1}; // column widths (bytes)
+    string name[] = {"name", "enrollment", "marks", "pass"};
+    datatype t[] = {text, text, int32, bool8};
+
+    // --- Define data ---
+    string data[] = {
+        "nafeel",    "2023BCSE080", "67", "1",
+        "raafid",    "2023BCSE030", "90", "1",
+        "irfan",     "2023BCSE068", "22", "0",
+        "longu",     "2023BCSE099", "88", "1" 
+    };
+
+    // --- Create table ---
+    database d;
+    d.create_table("students", 4, name, size, t);
+
+    // --- Insert ---
+    d.insert_into_table("students", data, 16);
+
+    // --- Select ---
+    cout << "\n=== TABLE CONTENTS ===\n";
+    d.select_from_table("students");
+
+    return 0;
+
 }

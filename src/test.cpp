@@ -2,22 +2,30 @@
 using namespace std;
 
 int main(){
-    // char *t;
-    // t=new char[3];
-    // char in[4];
-    // cin >> in;
-    // in[5]='\0';
-    // strncpy(t,in,5);
-    // for(int i=0;i<5;i++){
-    //     if(t[i]=='\0') break;
-    //     cout<<t[i];
+    // string s="pasha";
+    // char st[5];
+    // for(int i=0;i<s.length();i++){
+    //     st[i]=s[i];
     // }
+    // int x=32;
+    // ofstream out("aff.schema");
 
-    unsigned char c[4];
-    unsigned char m[4];
-    cin>>c;
-    cout<<c<<"  "<<sizeof(c)<<endl;;
+    // unsigned char buffer[4];
+    // memcpy(buffer,&x,1);
 
-    memcpy(m,c,4);
-    cout<<c;
+    // out.write((char*)buffer,1);
+    string *c;
+    unsigned char a[5]={'\0'};
+    char b[]={'a','b','c','d','e'};
+
+    memcpy(&a,b,5);
+    cout<<a;
+
+    // string c
+
+    // string name;
+    // memcpy(&name,buffer+i,temp);
+    // column_name = &name;
+    // i+=temp;
+    
 }
