@@ -17,10 +17,26 @@ class schema{
         string *column_name;
         datatype *dtypes;
     
+        schema() {
+        col_offset = nullptr;
+        column_name = nullptr;
+        dtypes = nullptr;
+        }
+
         ~schema(){
             delete[] col_offset;
             delete[] column_name;
             delete[] dtypes;
+        }
+
+        void free_arrays(){
+            delete[] col_offset;
+            delete[] column_name;
+            delete[] dtypes;
+
+            col_offset = nullptr;
+            column_name = nullptr;
+            dtypes = nullptr;
         }
 
         void load_schema(string db_name,string table_name){
@@ -48,6 +64,8 @@ class schema{
     
             memcpy(&temp8,buffer,1);
             num_of_cols=temp8;
+
+            free_arrays();
 
             //initialise the pointers
             col_offset=new int[num_of_cols];
