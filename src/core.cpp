@@ -17,6 +17,12 @@ class schema{
         string *column_name;
         datatype *dtypes;
     
+        ~schema(){
+            delete[] col_offset;
+            delete[] column_name;
+            delete[] dtypes;
+        }
+
         void load_schema(string db_name,string table_name){
             string file_name = "..\\data\\" + db_name + '_' + table_name + ".schema";
             ifstream in(file_name,ios::binary);
@@ -145,7 +151,6 @@ class schema{
         datatype getColumnType(int colIndex){}
 };
 
-
 class buffer{
     public:
         int size;
@@ -156,32 +161,64 @@ class buffer{
         row_buffer = new unsigned char[size];
     }
 
-    void* convert(string data, datatype dt,int limit){
-        void* ptr;
-        char nul='\0';
+    bool verify(schema &s,string *data,int size_of_data){
+        if(size_of_data % s.num_of_cols!=0) return false;
 
-        switch(dt){
-            case 0:
-            *(uint32_t*)ptr = stoi(data);
-            break;
+        int rows=size_of_data/s.num_of_cols;
 
-            case 1:
-            memcpy(ptr,data.c_str(),data.length());
-            memset((unsigned char*)ptr + data.length(), nul, limit -  data.length());
-            break; 
+        for(int r=0; r<rows;r++){
+            for(int c=0;c<s.num_of_cols;c++){
+                int index = r*s.num_of_cols +c;
+                string test = data[index];
+                int text_size=0;
 
-            case 2:
-            if(data=="1") {
-                *(bool*)ptr=true;
+                switch(s.dtypes[c]){
+                    case 0://int32
+                    try{
+                        int value = stoi(test);
+                    }catch(...){
+                        return false;
+                    }break;
+
+
+                    case 1://text
+                    text_size = (c+1==s.num_of_cols) ? s.row_size - s.col_offset[c]:
+                    s.col_offset[c+1]-s.col_offset[c];
+                    if(test.size()>text_size ) return false;
+                    break;
+
+                    case 2://bool
+                    if(test!="1" && test!="0") return false;
+                    if(test.empty()) return false;
+
+                }
             }
-            else {
-                *(bool*)ptr=false;
-            }
-            break;
         }
 
-        return ptr;
+        return true;
     }
+
+    void convert_and_write(const string &value,datatype dt,int position,int limit){
+        if(dt==int32){
+            uint32_t x = stoi(value);
+            memcpy(row_buffer+position,&x,4);
+            return;
+        }
+
+        if(dt==bool8){
+            uint8_t x=0;
+            if(value=="1") x=1;
+            memcpy(row_buffer+position,&x,1);
+            return;
+        }
+
+        if(dt==text){
+            memcpy(row_buffer+position,value.c_str(),value.size());
+            memset(row_buffer + position + value.size(), 0, limit - value.size());
+            return;
+        }
+    }
+    
 
     void fill_buffer(schema &s,string* data,int size_of_data){
         int current_row=0;
@@ -199,9 +236,8 @@ class buffer{
                 int limit = (current_col+1==s.num_of_cols)? s.row_size - s.col_offset[current_col] : 
                 s.col_offset[current_col+1]-s.col_offset[current_col] ;
 
-                void* ptr= convert(data[index],s.dtypes[current_col],limit);
-                memcpy(row_buffer+current_col_start,ptr,limit);
-    
+                convert_and_write(data[index],s.dtypes[current_col],current_col_start,limit);
+                
                 current_col++;
             }
 
@@ -257,12 +293,184 @@ class buffer{
     }
 };
 
+class catalog{
+    static const int MAX_TABLES = 50;
+
+    string db_name;
+    string table_names[MAX_TABLES];
+    int coulumn_counts[MAX_TABLES];
+    int table_count;
+
+    void clear() {
+    table_count = 0;
+    for(int i=0;i<MAX_TABLES;i++){
+        table_names[i] = "";
+        coulumn_counts[i] = 0;
+    }
+    }
+
+    public:
+    catalog(){
+    table_count = 0;
+    for(int i=0;i<MAX_TABLES;i++){
+        table_names[i] = "";
+        coulumn_counts[i] = 0;}
+    }
+
+
+    bool db_exists(string path){
+        ifstream out(path,ios::binary);
+        return out.is_open();
+    }
+
+    void save_catalog(string db_name){
+        //create path for file
+        string file_name="..\\data\\" + db_name +  ".catalog";
+        this->db_name=db_name;
+        
+        //check if db exists
+        if(db_exists(file_name)){
+            cout<<"catalog already exists"<<endl;
+            return;
+        }
+
+        //create a file
+        ofstream out(file_name, ios::binary);
+
+        uint32_t x = 0 ;
+        out.write((char*)&x,sizeof(x));
+
+        out.close();
+    }
+
+    void load_catalog(string db_name){
+        //create path for file
+        string file_name="..\\data\\" + db_name +  ".catalog";
+
+        //check if db exists
+        if(!db_exists(file_name)){
+            cout<<"catalog doesnt' exists"<<endl;
+            return;
+        }
+
+        //clear
+        clear();
+
+        //calculate the size of file
+        ifstream in(file_name,ios::binary);
+        in.seekg(0,ios::end);
+        int size_catalog_data = in.tellg();
+        in.seekg(0,ios::beg);
+
+        //store file in buffer
+        unsigned char *buffer = new unsigned char[size_catalog_data];
+        in.read((char*)buffer,size_catalog_data);
+        in.close();
+
+        //get num of tables
+        memcpy(&table_count,buffer,sizeof(int));
+        this->db_name=db_name;
+
+        //use loop to get the data of tables
+        int start = 4;
+        for(int i=0;i<table_count;i++){
+            uint8_t x; 
+            memcpy(&x,buffer+start,sizeof(uint8_t));
+            start++;
+
+            table_names[i] = string((char*)(buffer + start), x);
+            start+=x;
+
+            memcpy(&coulumn_counts[i],buffer+start,2);
+            start+=2;
+        }
+
+        delete[] buffer;
+    }
+
+    void add_table(string table_name, int coulumn_count){
+        //create path for file
+        string file_name="..\\data\\" + this->db_name +  ".catalog";
+
+        //check if db exists
+        if(!db_exists(file_name)){
+            cout<<"catalog doesnt' exists"<<endl;
+            return;
+        }
+        //check if table exists
+        if(has_table(table_name)){
+            cout<<"table already exists"<<endl;
+            return ;
+        }
+
+        //calculate the size of file 
+        ifstream in(file_name,ios::binary);
+        in.seekg(0,ios::end);
+        int size_catalog_data = in.tellg();
+        in.seekg(0,ios::beg);
+        
+        //size of table data
+        int size_table_data = 3 + table_name.size();
+        
+        //use a buffer to store the data of disk and the data of to be updated in disk
+        unsigned char *buffer = new unsigned char[size_catalog_data + size_table_data];
+
+        //copy the file into buffer1
+        in.read((char*)buffer,size_catalog_data);
+        in.close();
+
+        //add table data to buffer
+        uint8_t x = table_name.size();
+        memcpy(buffer + size_catalog_data,&x,1);
+
+        memcpy(buffer+size_catalog_data +1,table_name.c_str(),x);
+
+        uint16_t y=coulumn_count;
+        memcpy(buffer+size_catalog_data + 1 + x,&y,2);
+
+
+        //update the members of catalog
+        table_names[table_count]=table_name;
+        coulumn_counts[table_count]=coulumn_count;
+        table_count++;
+
+
+        //update table count in buffer
+        memcpy(buffer,&table_count,sizeof(table_count));
+        
+        
+        ofstream out(file_name,ios::binary);
+        out.write((char*)buffer,size_catalog_data + size_table_data);
+        out.close();
+        delete[] buffer;
+
+        return;
+    }
+
+    bool has_table(string table_name){
+        for(int i=0;i<table_count;i++){
+        if(table_names[i] == table_name) return true;
+        }
+        return false;
+    }
+
+    void print_catalog(){
+        for(int i=0;i<table_count;i++){
+            cout<<table_names[i]<<"   " <<coulumn_counts[i]<<endl;
+        }
+    }
+};
+
 class database{
     public:
     string db_name;
-    //it is stored in memory will think of putting it in file schema later
-    database(){
-        db_name="naff";
+
+    database(string name){
+        db_name=name;
+
+        catalog c;
+        if (!c.db_exists(db_name + ".catalog"))
+        c.save_catalog(db_name);
     }
 
     bool table_exists(string tb_name){
@@ -291,6 +499,10 @@ class database{
             return;
         }
 
+        //update catalog
+        catalog c;
+        c.load_catalog(db_name);
+        c.add_table(table_name,num_of_cols);
 
         //create schema file
         schema s;
@@ -322,14 +534,13 @@ class database{
         
         //verify schema and data
         buffer b;
-        // if(b.verify_data(s,data,size_of_data)){
-        //     cout<<"invalid data"<<endl;
-        //     return;
-        // }
+        if(!b.verify(s,data,size_of_data)){
+            cout<<"invalid data"<<endl;
+            return;
+        }
         
         //generate buffer
         b.fill_buffer(s,data,size_of_data);
-        
         
         // disk write
         out.write((char*)b.row_buffer,b.size);
@@ -369,43 +580,27 @@ class database{
 };
 
 int main(){
-    // int size[]={10,11,4,1};
-    // string name[]={"name","enrollment","marks","pass"};
-    // datatype t[]={text,text,int32,bool8};
+    // // --- Define schema ---
+    // int size[] = {10, 11, 4, 1}; // column widths (bytes)
+    // string name[] = {"name", "enrollment", "marks", "pass"};
+    // datatype t[] = {text, text, int32, bool8};
 
-    // string data[]={"nafeel","2023BCSE080","67","1","raafid","2023BCSE030","90","1","irfan","2023BCSE068","22","0"};
+    // // --- Define data ---
+    // string data[] = {
+    //     "nafeel",    "2023BCSE080", "66", "1",
+    //     "raafid",    "2023BCSE030", "90", "1",
+    //     "irfan",     "2023BCSE068", "22", "0",
+    //     "long",     "2023BCSE099", "88", "1" 
+    // };
 
+    // // --- Create table ---
+    // database d("test");
+    // d.create_table("students", 4, name, size, t);
 
-    // database d;
-    // d.create_table("tst",4,name,size,t);
-    // d.insert_into_table("tst",data,12);
-    // d.select_from_table("tst");
+    // // --- Insert ---
+    // d.insert_into_table("students", data, 16);
 
-
-    // --- Define schema ---
-    int size[] = {20, 11, 4, 1}; // column widths (bytes)
-    string name[] = {"name", "enrollment", "marks", "pass"};
-    datatype t[] = {text, text, int32, bool8};
-
-    // --- Define data ---
-    string data[] = {
-        "nafeel",    "2023BCSE080", "67", "1",
-        "raafid",    "2023BCSE030", "90", "1",
-        "irfan",     "2023BCSE068", "22", "0",
-        "longu",     "2023BCSE099", "88", "1" 
-    };
-
-    // --- Create table ---
-    database d;
-    d.create_table("students", 4, name, size, t);
-
-    // --- Insert ---
-    d.insert_into_table("students", data, 16);
-
-    // --- Select ---
-    cout << "\n=== TABLE CONTENTS ===\n";
-    d.select_from_table("students");
-
-    return 0;
-
+    // // --- Select ---
+    // cout << "\n=== TABLE CONTENTS ===\n";
+    // d.select_from_table("students");
 }
