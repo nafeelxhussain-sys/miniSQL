@@ -506,8 +506,6 @@ class database{
         return exists;
     }
 
-   
-    
     void create_table(string table_name, int num_of_cols, string *name, int *size, datatype* type){
         string file_name="..\\data\\" + this->db_name + '_' + table_name + ".tbl";
 
@@ -597,28 +595,28 @@ class database{
     }
 };
 
-int main(){
-    // // --- Define schema ---
-    // int size[] = {10, 11, 4, 1}; // column widths (bytes)
-    // string name[] = {"name", "enrollment", "marks", "pass"};
-    // datatype t[] = {text, text, int32, bool8};
+// int main(){
+//     // // --- Define schema --- 
+//     // int size[] = {10, 11, 4, 1}; // column widths (bytes)
+//     // string name[] = {"name", "enrollment", "marks", "pass"};
+//     // datatype t[] = {text, text, int32, bool8};
 
-    // // --- Define data ---
-    // string data[] = {
-    //     "nafeel",    "2023BCSE080", "66", "1",
-    //     "raafid",    "2023BCSE030", "90", "1",
-    //     "irfan",     "2023BCSE068", "22", "0",
-    //     "long",     "2023BCSE099", "88", "1" 
-    // };
+//     // // --- Define data ---
+//     // string data[] = {
+//     //     "nafeel",    "2023BCSE080", "66", "1",
+//     //     "raafid",    "2023BCSE030", "90", "1",
+//     //     "irfan",     "2023BCSE068", "22", "0",
+//     //     "long",     "2023BCSE099", "88", "1" 
+//     // };
 
-    // // --- Create table ---
-    // database d("test");
-    // d.create_table("students", 4, name, size, t);
+//     // // --- Create table ---
+//     // database d("test");
+//     // d.create_table("students", 4, name, size, t);
 
-    // // --- Insert ---
-    // d.insert_into_table("students", data, 16);
+//     // // --- Insert ---
+//     // d.insert_into_table("students", data, 16);
 
-    // // --- Select ---
-    // cout << "\n=== TABLE CONTENTS ===\n";
-    // d.select_from_table("students");
-}
+//     // // --- Select ---
+//     // cout << "\n=== TABLE CONTENTS ===\n";
+//     // d.select_from_table("students");
+// }
