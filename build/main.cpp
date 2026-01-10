@@ -2,6 +2,8 @@
 #include "parser.h"
 #include "executor.h"
 #include "utils.h"
+#include "schema.h"
+#include "filter.h"
 using namespace std;
 
 string read_query() {
@@ -54,7 +56,7 @@ int main(){
     executor exe;
 
     while(true){
-        string query = read_query();
+        query = read_query();
 
         if(to_upper(query)=="EXIT") break;
 

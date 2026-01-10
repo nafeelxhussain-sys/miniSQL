@@ -1,6 +1,7 @@
 #include "executor.h"
 #include "error.h"
 #include "utils.h"
+#include "schema.h"
 
 
 // ------------------- execute -------------------
@@ -61,7 +62,12 @@ void executor::execute_select(select_operation &o, database &db) {
         return;
     }
 
-    DB_error err =  db.select_from_table(o.table_name);
+    DB_error err;
+    if(o.root == nullptr)
+    err = db.select_from_table(o.table_name,o.root,false);
+    else
+    err = db.select_from_table(o.table_name,o.root,true);
+    
 
     if (!err.ok()) {
         cout << err.message << endl;

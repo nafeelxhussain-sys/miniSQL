@@ -2,22 +2,10 @@
 #include <iostream>
 #include <string>
 #include <stack>
-#include "core.h"
 #include "error.h"
+#include "utils.h"
 using namespace std;
-
-
-class ConditionNode {
-public:
-    bool is_leaf;
-    ConditionNode* left;
-    ConditionNode* right;
-    string operand;
-    string column;
-    string value;
-
-    ConditionNode() : is_leaf(false), left(nullptr), right(nullptr) {}
-};
+class ConditionNode;
 
 class create_operation {
 public:
@@ -60,10 +48,7 @@ public:
     create_operation create;
 };
 
-class where_clause {
-public:
-    DB_error make_tree(int token_count, int index, string tokens[], ConditionNode*& root);
-};
+
 
 class query_processor {
     #define max_tokens 1024

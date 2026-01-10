@@ -1,5 +1,8 @@
+#include<iostream>
 #include "parser.h"
 #include "utils.h"
+#include "filter.h"
+using namespace std;
 
 // ------------------- select_operation print -------------------
 void select_operation::print(ConditionNode* root) {
@@ -16,94 +19,6 @@ void select_operation::print(ConditionNode* root) {
     print(root->right);
 }
 
-// ------------------- utility -------------------
-
-
-int precedence(string op) {
-    if (to_upper(op) == "AND") return 2;
-    if (to_upper(op) == "OR") return 1;
-    return 0;
-}
-
-// ------------------- where_clause -------------------
-DB_error where_clause::make_tree(int token_count, int index, string tokens[], ConditionNode*& root) {
-    int postfix_token_count = token_count - index;
-    int postfix_index = 0;
-    string postfix_tokens[postfix_token_count];
-    stack<string> op;
-    index++;
-
-    // Build postfix
-    while (index < token_count) {
-        if (tokens[index] == "(") {
-            op.push(tokens[index]);
-        } else if (tokens[index] == ")") {
-            while (!op.empty() && op.top() != "(") {
-                if (precedence(op.top())) {
-                    postfix_tokens[postfix_index++] = op.top();
-                }
-                op.pop();
-            }
-            if (!op.empty()) op.pop();
-        } else if (precedence(tokens[index])) {
-            if ((op.empty()) || precedence(op.top()) < precedence(tokens[index])) {
-                op.push(tokens[index]);
-            } else {
-                while ((!op.empty()) && (precedence(op.top()) >= precedence(tokens[index]) && op.top() != "(")) {
-                    postfix_tokens[postfix_index++] = op.top();
-                    op.pop();
-                }
-                op.push(tokens[index]);
-            }
-        } else {
-            postfix_tokens[postfix_index++] = tokens[index];
-        }
-        index++;
-    }
-
-    while (!op.empty()) {
-        if (op.top() == "(") return DB_error(ERR_SYNTAX, "invalid syntax: missing '('");
-        postfix_tokens[postfix_index++] = op.top();
-        op.pop();
-    }
-
-    // Build tree
-    stack<ConditionNode*> node;
-    postfix_token_count = postfix_index;
-    postfix_index = 0;
-
-    while (postfix_index < postfix_token_count) {
-        ConditionNode* temp = new ConditionNode();
-        if (precedence(postfix_tokens[postfix_index])) {
-            temp->is_leaf = false;
-            temp->operand = to_upper(postfix_tokens[postfix_index++]);
-
-            if (node.size() < 2)
-                return DB_error(ERR_SYNTAX, "invalid syntax");
-
-            temp->right = node.top(); node.pop();
-            temp->left = node.top(); node.pop();
-            node.push(temp);
-        } else {
-            if (postfix_index >= postfix_token_count - 2)
-                return DB_error(ERR_SYNTAX, "invalid syntax");
-
-            temp->is_leaf = true;
-            temp->column = postfix_tokens[postfix_index++];
-            temp->operand = postfix_tokens[postfix_index++];
-            temp->value = postfix_tokens[postfix_index++];
-
-            if (temp->operand == "=" || temp->operand == "!=" || temp->operand == ">=" ||
-                temp->operand == "<=" || temp->operand == ">" || temp->operand == "<") {
-                node.push(temp);
-            } else {
-                return DB_error(ERR_SYNTAX, "unexpected token : " + temp->operand);
-            }
-        }
-    }
-    root = node.top();
-    return DB_error(ERR_NONE, "");
-}
 
 // ------------------- query_processor -------------------
 void query_processor::print() {
@@ -262,10 +177,16 @@ select_operation query_processor::parser_select() {
     if (token_count > 4 && to_upper(tokens[index]) != "WHERE")
         return make_error<select_operation>(ERR_SYNTAX, "unexpected token : " + tokens[index]);
 
-    if(token_count ==4) return o;
+    if(token_count ==4) {
+        o.root = nullptr;
+        return o;
+    }
+    else if(token_count <=7){
+        return make_error<select_operation>(ERR_SYNTAX, "invalid syntax");
+    }
     
     where_clause w;
-    ConditionNode* node;
+    ConditionNode* node=nullptr;
     DB_error err = w.make_tree(token_count, index, tokens, node);
     o.error = err; o.root = node;
 
