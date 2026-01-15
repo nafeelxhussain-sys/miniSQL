@@ -18,6 +18,16 @@ public:
     ConditionNode() : is_leaf(false), left(nullptr), right(nullptr) {}
 };
 
+class SetClause{
+    public:
+    #define max_columns 20
+    int set_cols;
+    string column_names[max_columns];
+    string column_values[max_columns];
+
+    int find_column(string col_name);
+};
+
 class where_clause {
 public:
     DB_error make_tree(int token_count, int index, string tokens[], ConditionNode*& root);
@@ -25,7 +35,7 @@ public:
     void delete_(stack<ConditionNode*> &node);
     template <typename T>
     bool condition_evaluate(T value, T threshold,  string operand);
-    bool evaluvate_tree(ConditionNode* root, schema &s,const unsigned char* row_buffer);
+    bool evaluvate_tree(ConditionNode* root, schema &s,const unsigned char* row_buffer );
 };
 
 template <typename T>

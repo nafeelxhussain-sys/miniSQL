@@ -4,8 +4,10 @@
 #include <stack>
 #include "error.h"
 #include "utils.h"
+#include "filter.h"
 using namespace std;
-class ConditionNode;
+
+
 
 class create_operation {
 public:
@@ -35,6 +37,20 @@ public:
 
     void print(ConditionNode* root);
 };
+class update_operation {
+public:
+    string table_name;
+    SetClause sc;
+    ConditionNode* root;
+    DB_error error;
+};
+
+class delete_operation {
+public:
+    string table_name;
+    ConditionNode* root;
+    DB_error error;
+};
 
 int precedence(string op);
 
@@ -46,8 +62,9 @@ public:
     select_operation select;
     insert_operation insert;
     create_operation create;
+    delete_operation delete_;
+    update_operation update;
 };
-
 
 
 class query_processor {
@@ -55,7 +72,7 @@ class query_processor {
     int token_count = 0;
     string tokens[max_tokens];
 
-public:
+    public:
     void print();
     void tokenizer(string input);
 
@@ -63,6 +80,9 @@ public:
 
     create_operation parser_create();
     insert_operation parser_insert();
+    update_operation parser_update();
+    delete_operation parser_delete();
     select_operation parser_select();
     select_operation parser_show();
+    select_operation parser_drop();
 };

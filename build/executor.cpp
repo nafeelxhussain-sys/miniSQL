@@ -14,6 +14,9 @@ void executor::execute(operation &o, database &db) {
     if (o.operation_type == "CREATE") execute_create(o.create, db);
     else if (o.operation_type == "INSERT") execute_insert(o.insert, db);
     else if (o.operation_type == "SELECT") execute_select(o.select, db);
+    else if (o.operation_type == "UPDATE") execute_update(o.update, db);
+    else if (o.operation_type == "DELETE") execute_delete(o.delete_, db);
+    else if (o.operation_type == "DROP") execute_drop(o.select, db);
     else if (o.operation_type == "SHOW") execute_show(o.select,db);
     else{
         cout<< "invalid syntax";
@@ -102,4 +105,60 @@ void executor::execute_show(select_operation &o, database &db) {
         
         s.print_schema();
     }
+}
+
+void executor :: execute_delete(delete_operation &o, database &db){
+    if (!o.error.ok()) {
+        cout << o.error.message << endl;
+        return;
+    }
+
+    DB_error err ;
+    if(o.root == nullptr)
+    err = db.delete_from_table(o.table_name , o.root , false);
+    else
+    err = db.delete_from_table(o.table_name , o.root , true);
+
+    if (!err.ok()) {
+        cout << err.message << endl;
+        return;
+    }
+
+    cout<<"data deleted from : " + o.table_name<<endl;
+}
+
+void executor :: execute_update(update_operation &o, database &db){
+    if (!o.error.ok()) {
+        cout << o.error.message << endl;
+        return;
+    }
+
+    DB_error err ;
+    if(o.root == nullptr)
+    err = db.update_table(o.table_name , o.root , false,o.sc);
+    else
+    err = db.update_table(o.table_name , o.root , true,o.sc);
+
+    if (!err.ok()) {
+        cout << err.message << endl;
+        return;
+    }
+
+    cout<<"data updated into : " + o.table_name<<endl;
+}
+
+void executor::execute_drop(select_operation &o, database &db) {
+    if (!o.error.ok()) {
+        cout << o.error.message << endl;
+        return;
+    }
+
+    DB_error err = db.drop_table(o.table_name);
+
+    if (!err.ok()) {
+        cout << err.message << endl;
+        return;
+    }
+
+    cout<<"table deleted : " + o.table_name<<endl;
 }

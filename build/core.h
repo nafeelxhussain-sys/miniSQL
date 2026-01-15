@@ -22,6 +22,7 @@ public:
     void save_catalog(string db_name);
     DB_error load_catalog(string db_name);
     DB_error add_table(string table_name, int coulumn_count);
+    DB_error remove_table(string table_name, string db_name);
     bool has_table(string table_name);
     void print_catalog(string db_name);
 };
@@ -36,6 +37,9 @@ public:
     DB_error create_table(string table_name, int num_of_cols, string* name, int* size, datatype* type);
     DB_error insert_into_table(string table_name, string* data, int size_of_data);
     DB_error select_from_table(string table_name, ConditionNode* root, bool where);
+    DB_error update_table(string table_name, ConditionNode* root, bool where,SetClause &sc);
+    DB_error delete_from_table(string table_name, ConditionNode* root, bool where);
+    DB_error drop_table(string table_name);
 };
 
 

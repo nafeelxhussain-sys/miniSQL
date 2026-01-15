@@ -13,6 +13,58 @@ buffer::buffer() {
     row_buffer = new unsigned char[size];
 }
 
+DB_error buffer::set_verify(schema &s, SetClause &sc){
+    for (int i = 0; i < sc.set_cols; i++) {
+
+        int index = s.getColumnIndex(sc.column_names[i]);
+        if (index == -1)
+            return DB_error(ERR_UNKNOWN_COLUMN, "unknown column: " + sc.column_names[i]);
+
+        datatype dt = s.getColumnType(index);
+        const string& test = sc.column_values[i];
+
+        switch (dt) {
+        case int32: {
+            try {
+                size_t pos;
+                stoi(test, &pos);
+                if (pos != test.size())
+                    return DB_error(ERR_TYPE_MISMATCH, "expected INT: " + test);
+            }
+            catch (...) {
+                return DB_error(ERR_TYPE_MISMATCH, "expected INT: " + test);
+            }
+            break;
+        }
+
+        case text: {
+            int text_size =
+                (index + 1 == s.num_of_cols) ?
+                s.row_size - s.col_offset[index] :
+                s.col_offset[index + 1] - s.col_offset[index];
+
+            if ((int)test.size() > text_size)
+                return DB_error(ERR_RUNTIME, "data too long: " + test);
+            break;
+        }
+
+        case bool8: {
+            if (test.empty())
+                return DB_error(ERR_TYPE_MISMATCH, "expected BOOL");
+
+            string v = to_upper(test);
+            if (v != "TRUE" && v != "FALSE")
+                return DB_error(ERR_TYPE_MISMATCH, "expected BOOL");
+
+            break;
+        }
+        }
+    }
+
+    return DB_error(ERR_NONE, "");
+}
+
+
 DB_error buffer::verify(schema& s, string* data, int size_of_data) {
     if (size_of_data % s.num_of_cols != 0) return DB_error(ERR_UNKNOWN_COLUMN,"invalid column ");
 
@@ -133,7 +185,7 @@ void buffer::print_buffer(schema& s, ConditionNode *root,bool is_where) {
             switch (type) {
             case int32:
             {
-                uint32_t x;
+                int32_t x;
                 memcpy(&x, col_data_ptr, 4);
                 cout << x << " ";
             } break;
@@ -152,4 +204,106 @@ void buffer::print_buffer(schema& s, ConditionNode *root,bool is_where) {
         }
         cout << endl;
     }
+}
+
+void buffer :: update_buffer(schema& s, ConditionNode *root,bool is_where, SetClause &sc){
+    int rows = size / s.row_size;
+
+    where_clause w;
+
+    for (int i = 0; i < rows; i++) {
+        unsigned char* current_row_start = row_buffer + (i * s.row_size);
+
+        //where clause
+        bool condition_bool = true; 
+        if(is_where){
+        try{
+            condition_bool = w.evaluvate_tree(root,s,current_row_start);
+        }
+        catch(const DB_error& err){
+            cout<<err.message<<endl;
+            return;
+        }}
+        
+
+
+        if(!condition_bool){
+            continue;
+        }
+
+        for (int k = 0; k < s.num_of_cols; k++) {
+
+            //set clause
+            int index = sc.find_column(s.column_name[k]);
+            if(index==-1)continue;
+
+
+            datatype type = s.dtypes[k];
+            unsigned char* col_data_ptr = current_row_start + s.col_offset[k];
+
+            switch (type) {
+            case int32:
+            {
+                uint32_t x = (uint32_t)stoul(sc.column_values[index]);
+                memcpy((char*)col_data_ptr, &x, sizeof(uint32_t));
+                break;
+            } 
+            case text:
+            {
+                int text_length = (k + 1 == s.num_of_cols) ? s.row_size - s.col_offset[k] :
+                s.col_offset[k + 1] - s.col_offset[k];
+                int updated_len = sc.column_values[index].size();
+
+                memcpy((char*)col_data_ptr,sc.column_values[index].c_str(), updated_len);
+                memset((char*)(col_data_ptr+updated_len),'\0',text_length- updated_len);
+                break;
+            } 
+            case bool8:
+                uint8_t x=0;
+                if(to_upper(sc.column_values[index]) == "TRUE") x = 1;
+                else if(to_upper(sc.column_values[index]) == "FALSE") x =0;
+
+                memcpy((char*)col_data_ptr, &x,sizeof(uint8_t) );
+            }
+        }
+        
+    }
+}
+
+int buffer::delete_from_buffer(schema& s, ConditionNode* root, bool is_where){
+    int rows = size / s.row_size;
+
+    int write_offset = 0;
+
+    for (int i = 0; i < rows; i++) {
+
+        unsigned char* current = row_buffer + i * s.row_size;
+
+        bool condition_bool = false;
+
+        if (is_where) {
+            try {
+                where_clause w;
+                condition_bool = w.evaluvate_tree(root, s, current);
+            }
+            catch (const DB_error& err) {
+                cout << err.message << endl;
+                return 0;
+            }
+        }
+
+        if (condition_bool) {
+            // delete row → skip it
+            continue;
+        }
+
+        // keep row → move it forward if needed
+        if (write_offset != i * s.row_size) {
+            memmove(row_buffer + write_offset, current, s.row_size);
+        }
+
+        write_offset += s.row_size;
+    }
+
+    return write_offset;  // new file size
 }

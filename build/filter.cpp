@@ -88,6 +88,9 @@ DB_error where_clause::make_tree(int token_count, int index, string tokens[], Co
             }
         }
     }
+    if(node.size()!=1){
+        return DB_error(ERR_SYNTAX, "missing tokens");
+    }
     root = node.top();
     return DB_error(ERR_NONE, "");
 }
@@ -197,5 +200,15 @@ bool where_clause :: evaluvate_tree(ConditionNode* root, schema &s,const unsigne
     }
 
     return center;
+}
+
+int SetClause ::find_column(string col_name){
+    int index = -1;
+
+    for(int i = 0 ; i <set_cols ; i++){
+        if(to_upper(col_name) == to_upper(column_names[i])) return i;
+    }
+
+    return index;
 }
 

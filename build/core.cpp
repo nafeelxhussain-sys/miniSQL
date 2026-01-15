@@ -140,6 +140,87 @@ void catalog::print_catalog(string db_name) {
     }
 }
 
+DB_error catalog::remove_table(string table_name,string db_name_){
+    string file_name = "..\\data\\" + db_name_ + ".catalog";
+
+    if (!db_exists(file_name)) {
+        return DB_error(ERR_NONE, "catalog does not exists ");
+    }
+
+    clear();
+    
+    ifstream in(file_name, ios::binary);
+    in.seekg(0, ios::end);
+    int size_catalog_data = in.tellg();
+    in.seekg(0, ios::beg);
+
+    
+    unsigned char* buffer = new unsigned char[size_catalog_data];
+    in.read((char*)buffer, size_catalog_data);
+    in.close();
+    
+
+    bool found = false;
+    int deleted_size = 0;
+    
+    int start = 4;
+    int end = 4;
+
+    memcpy(&table_count, buffer, sizeof(int));
+
+    for (int i = 0; i < table_count; i++) {
+        
+        uint8_t name_len;
+        memcpy(&name_len, buffer + end, 1);
+        end++;
+        
+        string table_name_((char*)(buffer + end), name_len);
+        end += name_len + 2;
+        
+        if (table_name == table_name_) {
+            
+            deleted_size = end - start;
+            
+            memmove(buffer + start,
+                buffer + end,
+                size_catalog_data - end);
+                
+                found = true;
+                break;
+            }
+            
+            start = end;
+        }
+        
+        if (!found) {
+            delete[] buffer;
+
+            return DB_error(ERR_NONE, "table not found");
+        }
+        
+
+        size_catalog_data -= deleted_size;
+        
+        // update table count in header
+        int new_count = table_count - 1;
+        memcpy(buffer, &new_count, sizeof(int));
+        
+        ofstream out(file_name, ios::binary | ios::trunc);
+
+        if (!out) {
+
+            delete[] buffer;
+            return DB_error(ERR_RUNTIME, "cannot open catalog for writing");
+        }
+
+        out.write((char*)buffer, size_catalog_data);
+        out.close();
+        
+    delete[] buffer;
+
+    return DB_error(ERR_NONE, "");
+}
+
 
 // -------------------- database --------------------
 database::database(string name) {
@@ -175,6 +256,9 @@ DB_error database::create_table(string table_name, int num_of_cols, string* name
     }
 
     catalog c;
+
+    if(c.db_exists(this->db_name))
+    c.save_catalog(this->db_name);
 
     err = c.load_catalog(db_name);
     if (!err.ok()) {
@@ -259,4 +343,102 @@ DB_error database::select_from_table(string table_name, ConditionNode* root, boo
     out.close();
 
     return err;
+}
+
+DB_error database :: delete_from_table(string table_name, ConditionNode* root, bool where){
+    string file_name = "..\\data\\" + this->db_name + '_' + table_name + ".tbl";
+
+    DB_error err(ERR_NONE,"");
+
+    if (!table_exists(table_name) && !schema_exists(table_name)) {
+        return DB_error(ERR_UNKNOWN_TABLE,"table " + table_name + " does not exists");
+    }
+
+    if(!where){
+        ofstream out(file_name, ios::binary);
+        out.close();
+        return err;
+    }
+
+    schema s;
+ 
+    err = s.load_schema(this->db_name, table_name);
+    if(!err.ok()){
+        return err;
+    }
+    
+    buffer b;
+    b.read_buffer(file_name);
+
+    int updated_size = b.delete_from_buffer(s,root,where);
+
+    ofstream out(file_name, ios::binary | ios::trunc);
+
+    out.write((char*)b.row_buffer, updated_size);
+    out.close();
+
+    return err;
+}
+
+DB_error database::update_table(string table_name, ConditionNode* root, bool where,SetClause &sc){
+    string file_name = "..\\data\\" + this->db_name + '_' + table_name + ".tbl";
+
+    DB_error err(ERR_NONE,"");
+
+    if (!table_exists(table_name) || !schema_exists(table_name)) {
+        return DB_error(ERR_UNKNOWN_TABLE,"table " + table_name + " does not exists");
+    }
+
+    schema s;
+    err = s.load_schema(this->db_name, table_name);
+    if (!err.ok()) {
+        return err;
+    }
+
+    
+    buffer b;
+    b.read_buffer(file_name);
+
+    err = b.set_verify(s,sc);
+    if (!err.ok()) {
+        return err;
+    }
+
+    b.update_buffer(s,root,where,sc);
+    ofstream out(file_name, ios::binary | ios::trunc);
+
+    out.write((char*)b.row_buffer, b.size);
+    out.close();
+
+    return err;
+}
+
+DB_error database::drop_table(string table_name){
+    string file_name = "..\\data\\" + this->db_name + '_' + table_name + ".tbl";
+    string schema_name = "..\\data\\" + this->db_name + '_' + table_name + ".schema";
+    DB_error err;
+
+    if(remove(file_name.c_str())==0){
+        //deleted
+    }else{
+        //unsuccesful
+        return DB_error(ERR_RUNTIME,"table does not exists ");
+    }
+
+
+    if(remove(schema_name.c_str())==0){
+        //deleted
+    }else{
+        //unsuccesful
+        return DB_error(ERR_RUNTIME,"schema does not exists ");
+    }
+
+
+    catalog c;
+    err = c.remove_table(table_name,this->db_name);
+    if(!err.ok()){
+        return err;
+    }
+
+    return DB_error(ERR_NONE,"");
 }

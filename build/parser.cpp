@@ -93,8 +93,15 @@ operation query_processor::command_router() {
         o.insert = parser_insert(); o.operation_type = "INSERT";
     } else if (to_upper(tokens[0]) == "CREATE") {
         o.create = parser_create(); o.operation_type = "CREATE";
+    } else if (to_upper(tokens[0]) == "UPDATE") {
+        o.update = parser_update(); o.operation_type = "UPDATE";
+    } else if (to_upper(tokens[0]) == "DELETE") {
+        o.delete_ = parser_delete(); o.operation_type = "DELETE";
     } else if(to_upper(tokens[0])=="SHOW"){
         o.select = parser_show(); o.operation_type = "SHOW";
+    }
+     else if(to_upper(tokens[0])=="DROP"){
+        o.select = parser_drop(); o.operation_type = "DROP";
     }
     
     return o;
@@ -207,4 +214,86 @@ select_operation query_processor::parser_show(){
     return o;
 }
 
+update_operation query_processor::parser_update(){
+    // UPDATE <TABLE_NAME> SET <column_name> = value , ... , WHERE conditon;
+    
+    update_operation o;
+    if ((token_count < 6) || (to_upper(tokens[0]) != "UPDATE"  || to_upper(tokens[2]) != "SET"))
+    return make_error<update_operation>(ERR_SYNTAX, "invalid syntax");
+    
+    o.table_name = tokens[1];
+    int index = 3;
+
+    SetClause sc;
+    sc.set_cols = 0;
+    while(index < token_count){
+        if(index + 2 >= token_count){
+            return make_error<update_operation>(ERR_SYNTAX, "invalid syntax");
+        }
+        
+        sc.column_names[sc.set_cols] = tokens[index++];
+        
+        if(tokens[index]!="="){
+            return make_error<update_operation>(ERR_SYNTAX, "expected = : " +tokens[index]);
+        }index++;
+        
+        sc.column_values[sc.set_cols] = tokens[index++];
+        
+        sc.set_cols++;
+
+        if(index<token_count && tokens[index]==","){
+            index++;
+        }else if(index<token_count &&to_upper(tokens[index])=="WHERE"){
+            break;
+        }else if(index<token_count){
+            return make_error<update_operation>(ERR_SYNTAX, "invalid syntax");
+        }
+    }
+
+    o.sc=sc;
+    if(index==token_count) {o.root = nullptr ;return o;}
+    
+    
+    where_clause w;
+    ConditionNode* node=nullptr;
+    DB_error err = w.make_tree(token_count, index, tokens, node);
+    o.error = err; o.root = node;
+    
+
+    return o;
+}
+
+delete_operation query_processor::parser_delete(){
+    // DELETE FROM <TABLE_NAME>  WHERE conditon;
+
+    delete_operation o;
+    if ((token_count < 3) || (to_upper(tokens[0]) != "DELETE"  || to_upper(tokens[1]) != "FROM"))
+        return make_error<delete_operation>(ERR_SYNTAX, "invalid syntax");
+
+    o.table_name = tokens[2];
+    int index = 3;
+
+    if (token_count > 3 && to_upper(tokens[index]) != "WHERE")
+        return make_error<delete_operation>(ERR_SYNTAX, "unexpected token : " + tokens[index]);
+
+    if(token_count == 3){ o.root =nullptr; return o;}
+    
+    where_clause w;
+    ConditionNode* node=nullptr;
+    DB_error err = w.make_tree(token_count, index, tokens, node);
+    o.error = err; o.root = node;
+
+    return o;
+}
+
+
+select_operation query_processor::parser_drop() {
+    select_operation o;
+    if ((token_count !=3 ) || (to_upper(tokens[0]) != "DROP" || to_upper(tokens[1]) != "TABLE"))
+        return make_error<select_operation>(ERR_SYNTAX, "invalid syntax ");
+
+    o.table_name = tokens[2];
+
+    return o;
+}
 
