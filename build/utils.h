@@ -11,3 +11,4 @@ enum datatype{
     bool8 = 2
 };
 string dtype_to_string(datatype dt);
+int compare_keys(const void *buffer,datatype dt ,const void *key,int key_size);
