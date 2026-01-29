@@ -112,21 +112,15 @@ int Disk_Manager :: allocate_page(Table_Metadata &tmd){
 
     Page meta;
     init_meta_page(meta.data, tmd);
-
     write_page(0,meta.data);
 
     return page_id;
 }
 
-void Disk_Manager :: free_page(int pageId){
+void Disk_Manager :: free_page(Table_Metadata &tmd,const int &pageId){
     Page buffer;
     Page meta;
 
-    Table_Metadata tmd;
-
-    read_page(0,&meta);
-    tmd.load_table_md(&meta);
-    
     init_free_page(&buffer,pageId,tmd.free_page_head);
     tmd.free_page_head = pageId;
 
@@ -291,19 +285,30 @@ Table_Metadata::Table_Metadata(){
     first_leaf_page_id=0;
 }
 
+BplusTree::BplusTree(Disk_Manager &dm_ref, Table_Metadata &tmd_ref, datatype type, int k_size)
+        : dm(dm_ref), tmd(tmd_ref), dt(type), key_size(k_size) {}
 
-void BplusTree::create_tree(Disk_Manager &dm,int &row_size, int &key_size){
-    //create meta data
-    Table_Metadata tmd;
+void BplusTree::sync_metadata() {
+    Page meta_pg;
+    tmd.save_table_md(&meta_pg);
+    dm.write_page(0, &meta_pg);
+}
+
+void BplusTree :: open_tree(){
+    Page meta_pg;
+    dm.read_page(0,&meta_pg);
+    tmd.load_table_md(&meta_pg);
+}
+
+void BplusTree::create_tree(int &row_size){
     
-    tmd.internalnode_order = (PAGE_SIZE-sizeof(Header)-4)/(key_size+4);
+    tmd.internalnode_order = (PAGE_SIZE-sizeof(Header)-sizeof(int))/(key_size+sizeof(int));
     tmd.leafnode_order = (PAGE_SIZE-sizeof(Header))/row_size;
 
     Page buffer;
 
     //create and write the meta page
-    tmd.save_table_md(&buffer);
-    dm.write_page(0,&buffer);
+    sync_metadata();
 
     //allocate pageid for root
     int pid = dm.allocate_page(tmd);
@@ -313,7 +318,8 @@ void BplusTree::create_tree(Disk_Manager &dm,int &row_size, int &key_size){
     dm.write_page(pid,&buffer);
 }
 
-int BplusTree::search_leaf(Disk_Manager &dm, Table_Metadata &tmd, datatype dt,const void *key, int key_size){
+
+int BplusTree::search_leaf(const void *key){
     Page buffer;
     Header h;
 
@@ -334,8 +340,8 @@ int BplusTree::search_leaf(Disk_Manager &dm, Table_Metadata &tmd, datatype dt,co
 
         int next_pid = 0;
         for(int i = 0 ; i < h.keys_count ; i++){
-            int key_off = sizeof(Header) + sizeof(int) + i*(4+key_size);
-            int child_off = sizeof(Header)+i*(4+key_size);
+            int key_off = sizeof(Header) + sizeof(int) + i*(sizeof(int)+key_size);
+            int child_off = sizeof(Header)+i*(sizeof(int)+key_size);
 
             if(compare_keys(data+key_off ,dt,key,key_size)<0){
                 //returns -1 if search_k<key
@@ -357,8 +363,7 @@ int BplusTree::search_leaf(Disk_Manager &dm, Table_Metadata &tmd, datatype dt,co
     return current_pid;
 }
 
-int BplusTree::find_in_leaf(Disk_Manager &dm,const int &pageid ,datatype dt,const void *key,
-    const int &key_size,const int &row_size, const int &key_off){
+int BplusTree::find_in_leaf(const int &pageid ,const void *key,const int &row_size, const int &key_off){
     // binary search on the rows to get the position to insert
     //- represents that the key actually already exists 
     //+ the place where if it exists it should be at 
@@ -391,27 +396,25 @@ int BplusTree::find_in_leaf(Disk_Manager &dm,const int &pageid ,datatype dt,cons
     return start;
 }
 
-void BplusTree::insert_row(Disk_Manager &dm,datatype dt, const void* row,
-    const int &key_size,const int &row_size, const int &key_off){
+void BplusTree::insert_row( const void* row,const int &row_size, const int &key_off){
     
-    Table_Metadata tmd;
     Header h;
     Page pg;
 
-    dm.read_page(0,&pg);
-    tmd.load_table_md(&pg);
+    // dm.read_page(0,&pg);
+    // tmd.load_table_md(&pg);
     const char* search_key = (char*)row + key_off;
 
 
     //find the page in which insertion is going to happen
-    int leaf_id = search_leaf(dm,tmd,dt,search_key,key_size);
+    int leaf_id = search_leaf(search_key);
 
     dm.read_page(leaf_id,&pg);
     h.load_header(&pg);
     int parentId=h.parent_id;
 
     //find the rowId to insert
-    int rId = find_in_leaf(dm,leaf_id,dt,search_key,key_size,row_size,key_off);
+    int rId = find_in_leaf(leaf_id,search_key,row_size,key_off);
 
     if(rId < 0){
         //the key already exists and we cannot create a copy of pk
@@ -423,7 +426,7 @@ void BplusTree::insert_row(Disk_Manager &dm,datatype dt, const void* row,
     if(rId==0){
         const char* old_key = (char*)&pg + sizeof(Header) + key_off;
         const char* new_key = (char*)row  + key_off;
-        update_parent(dm,dt,h.parent_id,old_key,key_size,new_key);
+        update_parent(h.parent_id,old_key,new_key);
     }
 
     bool overflow = h.free_bytes < row_size;
@@ -451,7 +454,7 @@ void BplusTree::insert_row(Disk_Manager &dm,datatype dt, const void* row,
         //write the page back
         dm.write_page(leaf_id,&pg);
 
-
+        sync_metadata();
         return;
     }
 
@@ -474,22 +477,24 @@ void BplusTree::insert_row(Disk_Manager &dm,datatype dt, const void* row,
 
 
     //leaf split case
-    SplitInfo res = leaf_split(dm,tmd,pg, row_size,full,key_size,key_off);
+    SplitInfo res = leaf_split(pg, row_size,full,key_off);
     delete[] full;
 
 
     if(tmd.root_page_id == leaf_id){
         //create a new root
-        create_new_root(dm,tmd,leaf_id,res.right_page_id,res.separator_key,key_size); 
+        create_new_root(leaf_id,res.right_page_id,res.separator_key);
+        sync_metadata(); 
         return ;
     }
 
     //update the parent node
-    insert_parent(dm,dt,h.parent_id,res.separator_key,key_size,res.right_page_id);
+    insert_parent(h.parent_id,res.separator_key,res.right_page_id);
+
+    sync_metadata();
 }
 
-void BplusTree::create_new_root(Disk_Manager &dm,Table_Metadata &tmd,const int &leaf_id,
-    const int &right_leaf_id,const void *seperator_key, const int &key_size){
+void BplusTree::create_new_root(const int &leaf_id,const int &right_leaf_id,const void *seperator_key){
 
     Page buffer;
     Header h;
@@ -514,9 +519,7 @@ void BplusTree::create_new_root(Disk_Manager &dm,Table_Metadata &tmd,const int &
     h.save_header(&buffer);
 
     dm.write_page(rootId,&buffer);
-    Page meta;
-    tmd.save_table_md(&meta);
-    dm.write_page(0,&meta);
+    sync_metadata();
 
     //update childs
     dm.read_page(leaf_id,&buffer);
@@ -531,9 +534,10 @@ void BplusTree::create_new_root(Disk_Manager &dm,Table_Metadata &tmd,const int &
     h.save_header(&buffer);
     dm.write_page(right_leaf_id,&buffer);
     
+    sync_metadata();
 }
 
-int BplusTree::find_in_parent(Disk_Manager &dm,datatype dt,const int &parentId ,const void *key,const int &key_size){
+int BplusTree::find_in_parent(const int &parentId ,const void *key){
     // binary search on the (key+child) to get the position to insert
     //- represents that the key actually already exists 
     //+ the place where if it exists it should be at 
@@ -566,15 +570,13 @@ int BplusTree::find_in_parent(Disk_Manager &dm,datatype dt,const int &parentId ,
     return start;
 }
 
-void BplusTree::insert_parent(Disk_Manager &dm,datatype dt,const int &pageId ,
-    const void *key,const int &key_size,const int &child){
+void BplusTree::insert_parent(const int &pageId ,const void *key,const int &child){
 
-    Table_Metadata tmd;
     Header h;
     Page pg;
 
-    dm.read_page(0,&pg);
-    tmd.load_table_md(&pg);
+    // dm.read_page(0,&pg);
+    // tmd.load_table_md(&pg);
     dm.read_page(pageId,&pg);
    
     h.load_header(&pg);
@@ -582,7 +584,7 @@ void BplusTree::insert_parent(Disk_Manager &dm,datatype dt,const int &pageId ,
     int row_size = key_size + sizeof(int);
 
     //find the rowId to insert
-    int rowId = find_in_parent(dm,dt,pageId,key,key_size);
+    int rowId = find_in_parent(pageId,key);
 
     if(h.free_bytes >= row_size){
         if(rowId < 0){
@@ -614,7 +616,6 @@ void BplusTree::insert_parent(Disk_Manager &dm,datatype dt,const int &pageId ,
         dm.write_page(pageId,&pg);
 
         
-
         return ;
     }
 
@@ -637,23 +638,21 @@ void BplusTree::insert_parent(Disk_Manager &dm,datatype dt,const int &pageId ,
 
     
     //internal split case
-    SplitInfo res = parent_split(dm,tmd,pg,key,key_size,child,full);
+    SplitInfo res = parent_split(pg,key,child,full);
     delete[] full;
     
 
     if(tmd.root_page_id == pageId){
         //create a new root
-        create_new_root(dm,tmd,pageId,res.right_page_id,res.separator_key,key_size); 
+        create_new_root(pageId,res.right_page_id,res.separator_key); 
         return ;
     }
 
     //update the parent node
-    insert_parent(dm,dt,h.parent_id,res.separator_key,key_size,res.right_page_id);
+    insert_parent(h.parent_id,res.separator_key,res.right_page_id);
 }
 
-
-SplitInfo BplusTree::parent_split(Disk_Manager &dm,Table_Metadata &tmd,Page &left_pg,const void * key,const int &key_size,
-    const int &child,const char* full){
+SplitInfo BplusTree::parent_split(Page &left_pg,const void * key,const int &child,const char* full){
 
     Header h_left;
     Header h_right;
@@ -662,7 +661,7 @@ SplitInfo BplusTree::parent_split(Disk_Manager &dm,Table_Metadata &tmd,Page &lef
     int row_size = key_size + sizeof(int);
     
     Page right_pg;
-    int right_pageId = dm.allocate_page(tmd);
+    int right_pageId = dm.allocate_page(this->tmd);
     
     dm.init_internal_page(&right_pg,right_pageId,h_left.parent_id);
     h_right.load_header(&right_pg);
@@ -724,8 +723,7 @@ SplitInfo BplusTree::parent_split(Disk_Manager &dm,Table_Metadata &tmd,Page &lef
     return res;
 }
 
-SplitInfo BplusTree::leaf_split(Disk_Manager &dm,Table_Metadata &tmd,Page &left_pg,const int &row_size,
-    const char* full,const int &key_size,const int &key_off){
+SplitInfo BplusTree::leaf_split(Page &left_pg,const int &row_size,const char* full,const int &key_off){
 
     Header h_left;
     Header h_right;
@@ -733,7 +731,7 @@ SplitInfo BplusTree::leaf_split(Disk_Manager &dm,Table_Metadata &tmd,Page &left_
     h_left.load_header(&left_pg);
     
     Page right_pg;
-    int right_pageId = dm.allocate_page(tmd);
+    int right_pageId = dm.allocate_page(this->tmd);
     
     if(h_left.nextleaf!=0){
         Page next_pg;
@@ -796,73 +794,76 @@ SplitInfo BplusTree::leaf_split(Disk_Manager &dm,Table_Metadata &tmd,Page &left_
     return res;
 }
 
-void BplusTree::delete_row(Disk_Manager &dm,datatype dt,const int &key_size,
-    const int &row_size, const void* key_ptr, const int &key_off){
+void BplusTree::delete_row(const int &row_size, const void* key_ptr, const int &key_off){
 
     //find the leaf in which the row exists
-    Page buffer;
-    dm.read_page(0,&buffer);
-    Table_Metadata tmd;
-    tmd.load_table_md(&buffer);
+    // Page buffer;
+    // dm.read_page(0,&buffer);
+    // tmd.load_table_md(&buffer);
 
-    int leafId = search_leaf(dm,tmd,dt,key_ptr,key_size);
-    int rowId = find_in_leaf(dm,leafId,dt,key_ptr,key_size,row_size,key_off);
-
+    // cout<<"before search"<<endl;
+    int leafId = search_leaf(key_ptr);
+    int rowId = find_in_leaf(leafId,key_ptr,row_size,key_off);
+    // cout<<"rid " <<rowId <<"leafId "<<leafId<<endl;
+    
     //calculate the rowId
     if(rowId>=0){
         //key not found
         //tbu
-
         return;
     }
-
-
-
+    
+    
+    
     rowId = -rowId - 1;
     //delete the row
     Page pg;
     Header h;
-
+    
     dm.read_page(leafId,&pg);
     h.load_header(&pg);
-
+    
     char *src = (char*)&pg + sizeof(Header) + (rowId+1)*row_size;
     char *dest = (char*)&pg + sizeof(Header) + (rowId)*row_size;
     int rows_to_move = h.keys_count - (rowId + 1);
-
+    
     memmove(dest,src,rows_to_move*row_size);
-
+    
     //update the header
     h.keys_count--;
     h.free_bytes+=row_size;
-
+    
     char* free = (char*)&pg + sizeof(Header) + h.keys_count*row_size;
     memset(free, 0 , h.free_bytes);
-
+    
     //save file and header
-
+    
     h.save_header(&pg);
     dm.write_page(leafId,&pg);
-
+    
     //update the seperator key of parent if rowId==0
     if(rowId==0 && h.keys_count>0){
-
+        
         char* new_key = (char*)&pg + sizeof(Header) + key_off;
-
-        update_parent(dm,dt,h.parent_id,key_ptr,key_size,new_key);
-
+        
+        update_parent(h.parent_id,key_ptr,new_key);
+        
     }
-
+    
     //check for underflow conditions
     int minimum_keys = (tmd.leafnode_order+1)/2;
     int underflow = false;
     if(h.keys_count < minimum_keys){
         underflow = true;
     }
-
-
+    
+    sync_metadata();
     if(!underflow) return;
+    // cout<<"after search"<<endl;
 
+    if(tmd.root_page_id == h.page_id){
+        return;
+    }
 
     Page &curr=pg;
     Page left;
@@ -898,39 +899,44 @@ void BplusTree::delete_row(Disk_Manager &dm,datatype dt,const int &key_size,
     //case left borrow
     bool borrow_left_possible = left_exists && left_can_lend && left_shares_parent;
     if(borrow_left_possible){
-        borrow_left(dm,dt,h.page_id,key_size,row_size,key_off);
+        borrow_left(h.page_id,row_size,key_off);
+        sync_metadata();
         return;
     }
 
     //case right borrow
     bool borrow_right_possible = right_exists && right_can_lend && right_shares_parent;
     if(borrow_right_possible){
-        borrow_right(dm,dt,h.page_id,key_size,row_size,key_off);
+        borrow_right(h.page_id,row_size,key_off);
+        sync_metadata();
         return;
     }
 
     //case merge left
     bool merge_left_possible = left_exists && !left_can_lend && left_shares_parent;
     if(merge_left_possible){
-        merge_leaf(dm,dt,h_curr.page_id,key_size,row_size,key_off);
+        merge_leaf(h_curr.page_id,row_size,key_off);
+        sync_metadata();
         return;
     }
 
     //case merge right
     bool merge_right_possible = right_exists && !right_can_lend && right_shares_parent;
     if(merge_right_possible){
-        merge_leaf(dm,dt,h_curr.nextleaf,key_size,row_size,key_off);
+        merge_leaf(h_curr.nextleaf,row_size,key_off);
+        sync_metadata();
         return;
     }
+
+    sync_metadata();
     return;
 }
 
-void BplusTree::update_parent(Disk_Manager &dm, datatype dt, const int &parentId, const void *old_key,
-    const int &key_size, const void *new_key){
+void BplusTree::update_parent(const int &parentId, const void *old_key, const void *new_key){
 
     if(parentId==0) return;
 
-    int rowId = find_in_parent(dm,dt,parentId,old_key,key_size);
+    int rowId = find_in_parent(parentId,old_key);
     int row_size = key_size+sizeof(int);
 
     if(rowId<0){
@@ -954,11 +960,10 @@ void BplusTree::update_parent(Disk_Manager &dm, datatype dt, const int &parentId
     int grandParentId = h.parent_id;
 
     //recursive call
-    update_parent(dm,dt,grandParentId, old_key,key_size,new_key);
+    update_parent(grandParentId, old_key,new_key);
 }
 
-void BplusTree::borrow_left(Disk_Manager &dm,datatype dt, const int &pageId,
-    const int &key_size,const int &row_size, const int &key_off){
+void BplusTree::borrow_left(const int &pageId,const int &row_size, const int &key_off){
     Page left;
     Page curr;
     Header h_curr;
@@ -1005,12 +1010,11 @@ void BplusTree::borrow_left(Disk_Manager &dm,datatype dt, const int &pageId,
 
     //update parent seperator key
     const char* new_key = (char*)&curr + sizeof(Header) + key_off;  
-    update_parent(dm,dt,h_curr.parent_id,old_key,key_size,new_key);
+    update_parent(h_curr.parent_id,old_key,new_key);
     
 }
 
-void BplusTree::borrow_right(Disk_Manager &dm,datatype dt, const int &pageId,
-    const int &key_size,const int &row_size, const int &key_off){
+void BplusTree::borrow_right(const int &pageId,const int &row_size, const int &key_off){
 
     Page curr;
     Page right;
@@ -1057,12 +1061,11 @@ void BplusTree::borrow_right(Disk_Manager &dm,datatype dt, const int &pageId,
 
     //update parent seperator key
     const char* new_key = (char*)&right + sizeof(Header) + key_off;   
-    update_parent(dm,dt,h_curr.parent_id,old_key,key_size,new_key);
+    update_parent(h_curr.parent_id,old_key,new_key);
 
 }
 
-void BplusTree::merge_leaf(Disk_Manager &dm,datatype dt, const int &pageId,
-    const int &key_size,const int &row_size, const int &key_off){
+void BplusTree::merge_leaf(const int &pageId,const int &row_size, const int &key_off){
     
     Page curr;
     Page left;
@@ -1093,6 +1096,7 @@ void BplusTree::merge_leaf(Disk_Manager &dm,datatype dt, const int &pageId,
     //update keycount and links
     h_left.keys_count += h_curr.keys_count;
     h_left.nextleaf = h_curr.nextleaf;
+    h_left.free_bytes -= h_curr.keys_count*row_size;
     if(h_curr.nextleaf!=0){
         //update the prev link as well
         Page pg;
@@ -1104,30 +1108,30 @@ void BplusTree::merge_leaf(Disk_Manager &dm,datatype dt, const int &pageId,
         dm.write_page(h.page_id,&pg);
     }
 
+
     h_left.save_header(&left);
     dm.write_page(h_left.page_id, &left);
 
-    dm.free_page(h_curr.page_id);
+    
+    dm.free_page(tmd,h_curr.page_id);
 
     //delete the seperator key in parent
-    delete_parent(dm,dt,h_curr.parent_id,key_size,deletion_key);
-
+    delete_parent(h_curr.parent_id,deletion_key);
 }
 
-void BplusTree::delete_parent(Disk_Manager &dm,datatype dt, const int &pageId,
-    const int &key_size,const char* seperator_key){
+void BplusTree::delete_parent(const int &pageId,const char* seperator_key){
 
     Page buffer;
-    Page tmd_data;
+    // Page tmd_data;
     Header h;
-    Table_Metadata tmd;
 
     dm.read_page(pageId,&buffer);
     h.load_header(&buffer);
-    tmd.load_table_md(&tmd_data);
+    // dm.read_page(0,&tmd_data);
+    // tmd.load_table_md(&tmd_data);
     
     //find the parent key 
-    int rowId = find_in_parent(dm,dt,pageId,seperator_key,key_size);
+    int rowId = find_in_parent(pageId,seperator_key);
 
     if(rowId>=0){
         //key not found
@@ -1166,13 +1170,13 @@ void BplusTree::delete_parent(Disk_Manager &dm,datatype dt, const int &pageId,
     //check root
     if(tmd.root_page_id == h.page_id){
         if(h.keys_count == 0&& h.page_type==INTERNALNODE) 
-        delete_root(dm,tmd);
+        delete_root();
         return;
     }
 
 
     char* search_key =  (char*)&buffer + sizeof(Header) + sizeof(int); 
-    int parent_sep_key_rowId = find_in_parent(dm,dt,h.parent_id,search_key,key_size);
+    int parent_sep_key_rowId = find_in_parent(h.parent_id,search_key);
 
     Page parent_buffer;
     Header h_parent;
@@ -1220,35 +1224,34 @@ void BplusTree::delete_parent(Disk_Manager &dm,datatype dt, const int &pageId,
     //borrow left
     bool borrow_left_possible=left_exists && left_can_lend;
     if(borrow_left_possible){
-        borrow_left_parent(dm,dt,h.page_id,h_left.page_id,parent_sep_key_rowId-1,key_size);
+        borrow_left_parent(h.page_id,h_left.page_id,parent_sep_key_rowId-1);
         return ;
     }
 
     //borrow righ
     bool borrow_right_possible = right_exists && right_can_lend;
     if( borrow_right_possible){
-        borrow_right_parent(dm,dt,h.page_id,h_right.page_id,parent_sep_key_rowId,key_size);
+        borrow_right_parent(h.page_id,h_right.page_id,parent_sep_key_rowId);
         return ;
     }
 
     //merge left
     bool merge_left_possible = left_exists && !left_can_lend;
     if(merge_left_possible){
-        merge_parent(dm,dt,h_left.page_id,h.page_id,key_size);
+        merge_parent(h_left.page_id,h.page_id);
         return;
     }
 
     //merge right
     bool merge_right_possible = right_exists && !right_can_lend;
     if(merge_right_possible){
-        merge_parent(dm,dt,h.page_id,h_right.page_id,key_size);
+        merge_parent(h.page_id,h_right.page_id);
         return;
     }
 
 }
 
-void BplusTree::borrow_right_parent(Disk_Manager &dm,datatype dt, const int &pageId,const int &rightId,const int&rowId,
-    const int &key_size){
+void BplusTree::borrow_right_parent(const int &pageId,const int &rightId,const int&rowId){
 
     Header h_right,h_curr,h_parent;
     Page right,curr,parent;
@@ -1316,8 +1319,7 @@ void BplusTree::borrow_right_parent(Disk_Manager &dm,datatype dt, const int &pag
     dm.write_page(h_child.page_id,&child);
 }
 
-void BplusTree::borrow_left_parent(Disk_Manager &dm,datatype dt, const int &pageId,const int &leftId,const int&rowId,
-    const int &key_size){
+void BplusTree::borrow_left_parent(const int &pageId,const int &leftId,const int&rowId){
 
     Header h_left,h_curr,h_parent;
     Page left,curr,parent;
@@ -1385,8 +1387,7 @@ void BplusTree::borrow_left_parent(Disk_Manager &dm,datatype dt, const int &page
     dm.write_page(h_child.page_id,&child);
 }
 
-void BplusTree::merge_parent(Disk_Manager &dm,datatype dt, const int &leftId,const int &rightId,
-    const int &key_size){
+void BplusTree::merge_parent(const int &leftId,const int &rightId){
     
     //put all data from right into left
     Page left,right,parent;
@@ -1401,7 +1402,7 @@ void BplusTree::merge_parent(Disk_Manager &dm,datatype dt, const int &leftId,con
     h_parent.load_header(&parent);
 
     char* search_key = (char*)&left + sizeof(Header) + sizeof(int);
-    int row_idx = find_in_parent(dm,dt,h_parent.page_id,search_key,key_size);
+    int row_idx = find_in_parent(h_parent.page_id,search_key);
     int row_size = key_size+sizeof(int);
 
     //pulldown seperation key
@@ -1441,14 +1442,14 @@ void BplusTree::merge_parent(Disk_Manager &dm,datatype dt, const int &leftId,con
     }
 
     //free right
-    dm.free_page(h_right.page_id);
+    dm.free_page(this->tmd,h_right.page_id);
 
 
     //delete the sep key in parent 
-    delete_parent(dm,dt,h_parent.page_id,key_size,deletion_key);
+    delete_parent(h_parent.page_id,deletion_key);
 }
 
-void BplusTree::delete_root(Disk_Manager &dm,Table_Metadata &tmd){
+void BplusTree::delete_root(){
     Page root;
     int new_root_id;
 
@@ -1465,212 +1466,10 @@ void BplusTree::delete_root(Disk_Manager &dm,Table_Metadata &tmd){
     dm.write_page(new_root_header.page_id,&new_root);
 
     //free old root
-    dm.free_page(tmd.root_page_id);
+    dm.free_page(this->tmd,tmd.root_page_id);
 
     //update tmd
     tmd.root_page_id=new_root_id;
-    
-    Page meta;
-    tmd.save_table_md(&meta);
-    dm.write_page(0,&meta);
 
+    sync_metadata();
 }
-
-// // //debugging
-// void BplusTree::check_integrity(Disk_Manager &dm, Table_Metadata &tmd, int key_size) {
-//     if (tmd.root_page_id == 0) return;
-//     std::vector<int> queue;
-//     queue.push_back(tmd.root_page_id);
-//     int head = 0;
-
-//     while(head < queue.size()){
-//         int curr_id = queue[head++];
-//         Page pg; Header h;
-//         dm.read_page(curr_id, &pg);
-//         h.load_header(&pg);
-
-//         if(h.page_type == INTERNALNODE) {
-//             // Check P0
-//             int p0; memcpy(&p0, (char*)&pg + sizeof(Header), 4);
-//             validate_child(dm, curr_id, p0, queue);
-
-//             // Check P1...Pn
-//             for(int i=0; i < h.keys_count; i++) {
-//                 int child_ptr_offset = sizeof(Header) + 4 + (i * (key_size + 4)) + key_size;
-//                 int pi; memcpy(&pi, (char*)&pg + child_ptr_offset, 4);
-//                 validate_child(dm, curr_id, pi, queue);
-//             }
-//         }
-//     }
-// }
-
-// void BplusTree::validate_child(Disk_Manager &dm, int parent_id, int child_id, std::vector<int> &queue) {
-//     if (child_id <= 0) return;
-//     Page pg; Header h;
-//     dm.read_page(child_id, &pg);
-//     h.load_header(&pg);
-    
-//     if(h.parent_id != parent_id) {
-//         cout << "\n!!! INTEGRITY FAILURE !!!" << endl;
-//         cout << "Page " << child_id << " (Type: " << h.page_type 
-//              << ") claims Parent is " << h.parent_id 
-//              << " but Parent Node " << parent_id << " points to it." << endl;
-//         // Don't exit, just print so you can see the whole mess
-//     }
-    
-//     if(h.page_type == INTERNALNODE) queue.push_back(child_id);
-// }
-
-// void BplusTree::print_tree_structure(Disk_Manager &dm, Table_Metadata &tmd, int key_size) {
-//     if (tmd.root_page_id == 0) {
-//         cout << "Tree is empty." << endl;
-//         return;
-//     }
-
-//     std::vector<int> current_level;
-//     current_level.push_back(tmd.root_page_id);
-//     int level = 0;
-
-//     cout << "\n--- B+ Tree Visualization ---" << endl;
-
-//     while (!current_level.empty()) {
-//         std::vector<int> next_level;
-//         cout << "Level " << level++ << ": ";
-
-//         for (int pid : current_level) {
-//             Page pg;
-//             Header h;
-//             dm.read_page(pid, &pg);
-//             h.load_header(&pg);
-
-//             cout << "[P" << pid << " (Parent:" << h.parent_id << ") ";
-            
-//             if (h.page_type == INTERNALNODE) {
-//                 // Print Pointers and Keys: P0 | K1 | P1 | K2 | P2...
-//                 int p0;
-//                 memcpy(&p0, (char*)&pg + sizeof(Header), 4);
-//                 cout << "Ptrs:(" << p0;
-//                 next_level.push_back(p0);
-
-//                 for (int i = 0; i < h.keys_count; i++) {
-//                     int key;
-//                     int pi;
-//                     int key_off = sizeof(Header) + 4 + (i * (key_size + 4));
-//                     int ptr_off = key_off + key_size;
-                    
-//                     memcpy(&key, (char*)&pg + key_off, 4); // Assuming int32
-//                     memcpy(&pi, (char*)&pg + ptr_off, 4);
-                    
-//                     cout << " | K:" << key << " | P:" << pi;
-//                     next_level.push_back(pi);
-//                 }
-//                 cout << ")] ";
-//             } else {
-//                 // Leaf Node
-//                 cout << "Leaf Keys: ";
-//                 for (int i = 0; i < h.keys_count; i++) {
-//                     int key;
-//                     // Note: Change 20 to your actual row_size
-//                     memcpy(&key, (char*)&pg + sizeof(Header) + (i * 20), 4); 
-//                     cout << key << " ";
-//                 }
-//                 cout << "| Next:" << h.nextleaf << "] ";
-//             }
-//         }
-//         cout << endl;
-//         current_level = next_level;
-//     }
-// }
-
-
-
-// int main(){
-//     struct TestRow {
-//     int id;
-//     char data[16]; // Fixed size for testing
-//     };
-
-//     Disk_Manager dm;
-//     BplusTree tree;
-//     string tableName = "test_table";
-    
-//     // 1. Setup
-//     dm.create_file(tableName);
-//     int row_size = sizeof(TestRow); 
-//     int key_size = sizeof(int);
-//     int key_off = 0; // 'id' is at the start of TestRow
-
-//     std::cout << "--- Initializing Tree ---" << std::endl;
-//     tree.create_tree(dm, row_size, key_size);
-
-//     // 2. Insert sequential data to force right-side splits
-//     // With 128 byte pages, 20 insertions should create several levels
-//     // std::cout << "--- Inserting 1000 Rows (Sequential) ---" << std::endl;
-//     // for (int i = 0; i <= 1; i++) {
-//     //     TestRow row;
-//     //     row.id = i;
-//     //     snprintf(row.data, sizeof(row.data), "val_%dllllllllll", i);
-        
-//     //     std::cout << "Inserting ID: " << i << "... ";
-//     //     tree.insert_row(dm, datatype::int32, &row, key_size, row_size, key_off);
-//     //     std::cout << "Done." << std::endl;
-
-//     //     // Refresh Metadata
-//     //     Table_Metadata tmd;
-//     //     Page meta; dm.read_page(0, &meta);
-//     //     tmd.load_table_md(&meta);
-
-//     //     // Debug every split
-//     //     if (i % 5 == 0) { 
-//     //         cout << "\nChecking after " << i << " inserts..." << endl;
-//     //         tree.check_integrity(dm, tmd, key_size);
-//     // }
-//     // }
-//     /* 
-//     //insert
-//     // TestRow row;
-//     // int ins[] = {2,4,6,8,10,12,14,16,5,7,1};
-//     // for(int i = 0 ; i<11 ;i++){
-//     //     row.id = ins[i];
-//     //     tree.insert_row(dm, datatype::int32, &row, key_size, row_size, key_off);
-//     // }
-//     */
-    
-
-//     // 3. Verification: Traverse the Clustered Leaf Level (Linked List)
-//     std::cout << "\n--- Verifying Clustered Leaf Chain ---" << std::endl;
-//     Page meta_pg;
-//     dm.read_page(0, &meta_pg);
-//     Table_Metadata tmd;
-//     tmd.load_table_md(&meta_pg);
-
-//     int current_leaf_id = tmd.first_leaf_page_id;
-//     while (current_leaf_id != 0) {
-//         Page leaf_pg;
-//         Header h;
-//         dm.read_page(current_leaf_id, &leaf_pg);
-//         h.load_header(&leaf_pg);
-
-//         std::cout << "Page [" << current_leaf_id << "] Keys: " << h.keys_count << " | Data: ";
-        
-//         for (int i = 0; i < h.keys_count; i++) {
-//             int key;
-//             memcpy(&key, (char*)&leaf_pg + sizeof(Header) + (i * row_size), sizeof(int));
-//             std::cout << key << " ";
-//         }
-//         std::cout << " | Next Leaf: " << h.nextleaf << std::endl;
-        
-//         current_leaf_id = h.nextleaf;
-//     }
-
-//     // 4. Point Lookup Test
-//     std::cout << "\n--- Testing Point Lookup ---" << std::endl;
-//     int search_key = 41;
-//     int target_page = tree.search_leaf(dm, tmd, datatype::int32, &search_key, key_size);
-//     std::cout << "Key 41 should be in Page: " << target_page << std::endl;
-
-    
-//     tree.print_tree_structure(dm, tmd, key_size);
-
-//     return 0;
-// }

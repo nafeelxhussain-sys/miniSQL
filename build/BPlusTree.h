@@ -49,7 +49,7 @@ public:
     void read_page(int page_id, void *buffer);
     void write_page(int page_id, const void *buffer);
     int allocate_page(Table_Metadata &tmd);
-    void free_page(int pageId);
+    void free_page(Table_Metadata &tmd, const int& pageId);
     void open_file(string &table_name);
     void create_file(string &table_name);
 
@@ -86,52 +86,54 @@ public:
 class BplusTree
 {
     private:
-    private:
     // Shared state for the current operation
     Disk_Manager &dm; 
     Table_Metadata &tmd;
     datatype dt;
+    const int key_size;
     
     public:
-    void create_tree(Disk_Manager &dm, int &row_size, int &key_size);
+    BplusTree(Disk_Manager &dm_ref, Table_Metadata &tmd_ref, datatype type, int k_size);
 
-    int search_leaf(Disk_Manager &dm, Table_Metadata &tmd, datatype dt, const void *key, int key_size);
+    void create_tree(int &row_size);
 
-    int find_in_leaf(Disk_Manager &dm, const int &pageid, datatype dt, const void *key, const int &key_size, const int &row_size, const int &key_off);
+    void open_tree();
 
-    void insert_row(Disk_Manager &dm, datatype dt, const void *row, const int &key_size, const int &row_size, const int &key_off);
+    void sync_metadata();
 
-    SplitInfo leaf_split(Disk_Manager &dm, Table_Metadata &tmd, Page &left_pg, const int &row_size, const char *full, const int &key_size, const int &key_off);
+    int search_leaf(const void *key);
 
-    void insert_parent(Disk_Manager &dm, datatype dt, const int &parentId, const void *key, const int &key_size, const int &childpointer);
+    int find_in_leaf(const int &pageid, const void *key, const int &row_size, const int &key_off);
+
+    void insert_row(const void *row, const int &row_size, const int &key_off);
+
+    SplitInfo leaf_split(Page &left_pg, const int &row_size, const char *full, const int &key_off);
+
+    void insert_parent( const int &parentId, const void *key, const int &childpointer);
     
-    void update_parent(Disk_Manager &dm, datatype dt, const int &parentId, const void *key, const int &key_size,const void *new_key);
+    void update_parent( const int &parentId, const void *key,const void *new_key);
 
-    SplitInfo parent_split(Disk_Manager &dm, Table_Metadata &tmd, Page &left_pg, const void *key, const int &key_size, const int &child, const char *full);
+    SplitInfo parent_split(Page &left_pg, const void *key,  const int &child, const char *full);
 
-    int find_in_parent(Disk_Manager &dm, datatype dt, const int &parentId, const void *key, const int &key_size);
+    int find_in_parent(const int &parentId, const void *key);
 
-    void create_new_root(Disk_Manager &dm, Table_Metadata &tmd, const int &leaf_id, const int &right_leaf_id, const void *seperator_key, const int &key_size);
+    void create_new_root(const int &leaf_id, const int &right_leaf_id, const void *seperator_key);
 
-    void delete_row(Disk_Manager &dm, datatype dt, const int &key_size, const int &row_size, const void *key_ptr, const int &key_off);
+    void delete_row( const int &row_size, const void *key_ptr, const int &key_off);
 
-    void borrow_left(Disk_Manager &dm,datatype dt, const int &pageId,const int &key_size,const int &row_size, const int &key_off);
+    void borrow_left(const int &pageId,const int &row_size, const int &key_off);
 
-    void borrow_right(Disk_Manager &dm,datatype dt, const int &pageId,const int &key_size,const int &row_size, const int &key_off);
+    void borrow_right(const int &pageId,const int &row_size, const int &key_off);
 
-    void merge_leaf(Disk_Manager &dm,datatype dt, const int &pageId,const int &key_size,const int &row_size, const int &key_off);
+    void merge_leaf(const int &pageId,const int &row_size, const int &key_off);
 
-    void delete_parent(Disk_Manager &dm,datatype dt, const int &pageId,const int &key_size,const char* seperator_key);
+    void delete_parent(const int &pageId,const char* seperator_key);
 
-    void borrow_right_parent(Disk_Manager &dm,datatype dt, const int &pageId,const int &rightId,const int&rowId,const int &key_size);
+    void borrow_right_parent(const int &pageId,const int &rightId,const int&rowId);
 
-    void borrow_left_parent(Disk_Manager &dm,datatype dt, const int &pageId,const int &leftId,const int&rowId,const int &key_size);
+    void borrow_left_parent(const int &pageId,const int &leftId,const int&rowId);
     
-    void merge_parent(Disk_Manager &dm,datatype dt, const int &leftId,const int &RightId,const int &key_size);
+    void merge_parent(const int &leftId,const int &RightId);
     
-    void delete_root(Disk_Manager &dm,Table_Metadata &tmd);
-
-    // void validate_child(Disk_Manager &dm, int parent_id, int child_id, std::vector<int> &queue);
-    // void check_integrity(Disk_Manager &dm, Table_Metadata &tmd,int key_size);
-    // void print_tree_structure(Disk_Manager &dm, Table_Metadata &tmd, int key_size);
+    void delete_root();
 };
