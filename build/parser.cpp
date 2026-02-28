@@ -108,13 +108,16 @@ operation query_processor::command_router() {
 }
 
 // ------------------- parser_create -------------------
-create_operation query_processor::parser_create() {
+create_operation query_processor :: parser_create() {
     create_operation o;
     if ((token_count < 6) || (to_upper(tokens[0]) != "CREATE" || to_upper(tokens[1]) != "TABLE" || tokens[3] != "("))
         return make_error<create_operation>(ERR_SYNTAX, "invalid syntax");
 
     o.table_name = tokens[2];
     int index = 4; o.num_of_col = 0;
+
+    int pk_count=1;
+    bool has_sk=false;
 
     while (index < token_count) {
         o.column_names[o.num_of_col] = tokens[index++];
@@ -132,11 +135,31 @@ create_operation query_processor::parser_create() {
             else return make_error<create_operation>(ERR_SYNTAX, "invalid syntax : missing ')'");
         }
 
+        if(index < token_count && to_upper(tokens[index])=="KEY"){
+            if(pk_count==0) return make_error<create_operation>(ERR_SYNTAX, "More than one primary key given :");
+            else pk_count--;
+
+            o.column_index[o.num_of_col]=1;index++;
+        }
+        else if(index < token_count && to_upper(tokens[index])=="INDEX"){
+            has_sk=true;
+
+            o.column_index[o.num_of_col]=2;index++;
+        }
+        else{
+            o.column_index[o.num_of_col]=0;
+        }
+
         o.num_of_col++;
         if (index < token_count && tokens[index] == ",") index++;
         else if (index < token_count && tokens[index] == ")") { index++; if (index < token_count) return make_error<create_operation>(ERR_SYNTAX, "unexpected token : " + tokens[index]); break; }
         else return make_error<create_operation>(ERR_SYNTAX, "unexpected token : " + tokens[index]);
     }
+
+    if(has_sk && pk_count==1){
+        return make_error<create_operation>(ERR_SYNTAX, "Primary key expected : ");
+    }
+    
     return o;
 }
 

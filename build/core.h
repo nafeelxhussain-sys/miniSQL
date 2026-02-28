@@ -11,7 +11,8 @@ class catalog {
 
     string db_name;
     string table_names[MAX_TABLES];
-    int coulumn_counts[MAX_TABLES];
+    uint16_t coulumn_counts[MAX_TABLES];
+    uint8_t table_clustered[MAX_TABLES];
     int table_count;
 
     void clear();
@@ -21,7 +22,7 @@ public:
     bool db_exists(string path);
     void save_catalog(string db_name);
     DB_error load_catalog(string db_name);
-    DB_error add_table(string table_name, int coulumn_count);
+    DB_error add_table(string table_name, uint16_t coulumn_count ,uint8_t is_clustered=0);
     DB_error remove_table(string table_name, string db_name);
     bool has_table(string table_name);
     void print_catalog(string db_name);
@@ -34,7 +35,7 @@ public:
     database(string name);
     bool table_exists(string tb_name);
     bool schema_exists(string tb_name);
-    DB_error create_table(string table_name, int num_of_cols, string* name, int* size, datatype* type);
+    DB_error create_table(string table_name, int num_of_cols, string* name, int* size, datatype* type, int * col_index);
     DB_error insert_into_table(string table_name, string* data, int size_of_data);
     DB_error select_from_table(string table_name, ConditionNode* root, bool where);
     DB_error update_table(string table_name, ConditionNode* root, bool where,SetClause &sc);

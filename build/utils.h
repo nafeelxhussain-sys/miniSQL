@@ -12,3 +12,5 @@ enum datatype{
 };
 string dtype_to_string(datatype dt);
 int compare_keys(const void *buffer,datatype dt ,const void *key,int key_size);
+int compare_composite(const void *buffer,datatype dt ,const void *key,int key_size);
+string read_query();

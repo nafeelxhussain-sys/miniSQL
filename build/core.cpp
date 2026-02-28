@@ -12,6 +12,7 @@ void catalog::clear() {
     for (int i = 0; i < MAX_TABLES; i++) {
         table_names[i] = "";
         coulumn_counts[i] = 0;
+        table_clustered[i]=-1;
     }
 }
 
@@ -20,6 +21,7 @@ catalog::catalog() {
     for (int i = 0; i < MAX_TABLES; i++) {
         table_names[i] = "";
         coulumn_counts[i] = 0;
+        table_clustered[i]=-1;
     }
 }
 
@@ -74,6 +76,9 @@ DB_error catalog::load_catalog(string db_name) {
 
         memcpy(&coulumn_counts[i], buffer + start, 2);
         start += 2;
+
+        memcpy(&table_clustered[i], buffer+start,1);
+        start+=1;
     }
 
     delete[] buffer;
@@ -81,7 +86,7 @@ DB_error catalog::load_catalog(string db_name) {
     return DB_error(ERR_NONE,"");
 }
 
-DB_error catalog::add_table(string table_name, int coulumn_count) {
+DB_error catalog::add_table(string table_name, uint16_t coulumn_count, uint8_t is_clustered) {
     string file_name = "..\\data\\" + this->db_name + ".catalog";
 
     DB_error err(ERR_NONE, "");
@@ -99,7 +104,7 @@ DB_error catalog::add_table(string table_name, int coulumn_count) {
     int size_catalog_data = in.tellg();
     in.seekg(0, ios::beg);
 
-    int size_table_data = 3 + table_name.size();
+    int size_table_data = 4 + table_name.size();
     unsigned char* buffer = new unsigned char[size_catalog_data + size_table_data];
     in.read((char*)buffer, size_catalog_data);
     in.close();
@@ -110,9 +115,13 @@ DB_error catalog::add_table(string table_name, int coulumn_count) {
 
     uint16_t y = coulumn_count;
     memcpy(buffer + size_catalog_data + 1 + x, &y, 2);
+    uint8_t z = is_clustered;
+    memcpy(buffer + size_catalog_data + 3 + x, &z, 1);
+
 
     table_names[table_count] = table_name;
     coulumn_counts[table_count] = coulumn_count;
+    table_clustered[table_count] = is_clustered;
     table_count++;
 
     memcpy(buffer, &table_count, sizeof(table_count));
@@ -136,7 +145,9 @@ void catalog::print_catalog(string db_name) {
     cout<<db_name<<endl<<"|"<<endl;
     for (int i = 0; i < table_count; i++) {
         cout<<"|---- ";
-        cout << table_names[i] << "  ( " << coulumn_counts[i] <<" columns )"<< endl;
+        cout << table_names[i] << "  ( " << coulumn_counts[i] <<" columns )";
+        if(table_clustered[i]==1) cout<<"  [clustered]"<<endl;
+        else cout<<"  [heap]"<<endl;
     }
 }
 
@@ -175,7 +186,7 @@ DB_error catalog::remove_table(string table_name,string db_name_){
         end++;
         
         string table_name_((char*)(buffer + end), name_len);
-        end += name_len + 2;
+        end += name_len + 3;
         
         if (table_name == table_name_) {
             
@@ -247,7 +258,7 @@ bool database::schema_exists(string tb_name) {
     return exists;
 }
 
-DB_error database::create_table(string table_name, int num_of_cols, string* name, int* size, datatype* type) {
+DB_error database::create_table(string table_name, int num_of_cols, string* name, int* size, datatype* type, int *col_index) {
     string file_name = "..\\data\\" + this->db_name + '_' + table_name + ".tbl";
 
     DB_error err(ERR_NONE,"");
@@ -265,13 +276,13 @@ DB_error database::create_table(string table_name, int num_of_cols, string* name
         return err;
     }
 
-    err = c.add_table(table_name, num_of_cols);
+    err = c.add_table(table_name, num_of_cols,0);
     if (!err.ok()) {
         return err;
     }
 
     schema s;
-    err = s.create_schema_file(this->db_name, table_name, num_of_cols, name, size, type);
+    err = s.create_schema_file(this->db_name, table_name, num_of_cols, name, size, type, col_index,0);
     if (!err.ok()) {
         return err;
     }

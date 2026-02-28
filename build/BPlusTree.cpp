@@ -1,292 +1,13 @@
 #include<iostream>
 #include<cstring>
 #include<bits/stdc++.h>
+#include "DiskManager.h"
+#include "utils.h"
 #include "BPlusTree.h"
-// #include "utils.h"
 using namespace std;
 
-//tb removed
-
-
-int compare_keys(const void* buffer,  datatype dt, const void* search_key, int key_size){
-    const char* page = (const char*)buffer;
-
-    if (dt == int32){
-        int page_key;
-        int search_val;
-
-        memcpy(&search_val, search_key, sizeof(int));
-        memcpy(&page_key, page , sizeof(int));
-
-        if(search_val < page_key) return -1;
-        else if(search_val > page_key) return 1;
-        else if(search_val == page_key) return 0;
-    }
-    else if (dt == text){
-        int value =  memcmp(search_key, page , key_size);
-
-        if(value<0) return -1;
-        else if(value==0) return 0;
-        else if(value>0) return 1;
-    }
-
-    return -1;
-}
-// |||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||
-void Disk_Manager:: open_file(string &table_name){
-    string file_name = "..//data//main_" + table_name + ".tbl";
-
-    file.open(file_name, ios::in | ios::out | ios::binary);
-
-    if (!file.is_open()) {
-        //error
-    }
-}
-
-void Disk_Manager:: create_file(string &table_name){
-    string file_name = "..//data//main_" + table_name + ".tbl";
-
-    if (file.is_open()) {
-        file.close();
-    }
-
-    // create file
-    file.open(file_name, ios::out | ios::binary);
-    file.close();
-
-    // reopen
-    file.open(file_name, ios::in | ios::out | ios::binary);
-
-    if (!file.is_open()) {
-        //error
-    }
-
-}
-
-Disk_Manager:: ~Disk_Manager(){
-    if(file.is_open()){
-        file.close();
-    }
-}
-
-void Disk_Manager :: read_page(int page_id, void *buffer){
-    memset(buffer, 0, PAGE_SIZE);
-    int page_offset = page_id * PAGE_SIZE;
-    file.seekg(page_offset);
-    file.read((char*)buffer, PAGE_SIZE);
-}
-
-void Disk_Manager :: write_page(int page_id,const void *buffer){
-    int page_offset = page_id * PAGE_SIZE;
-    file.seekp(page_offset);
-    file.write((char*)buffer, PAGE_SIZE);
-    file.flush();
-}
-
-int Disk_Manager :: allocate_page(Table_Metadata &tmd){
-    int page_id = 0;
-
-    //free page
-    if(tmd.free_page_head != 0){
-        page_id = tmd.free_page_head;
-        
-        Page buffer;
-        Header h;
-        
-        read_page(page_id,&buffer);
-        h.load_header(&buffer);
-        
-        //move the free page pointer to next 
-        tmd.free_page_head = h.nextleaf;
-        
-    }else{
-        //no free page
-        tmd.total_page_count++;
-        page_id = tmd.total_page_count;
-    }
-
-    if(page_id==1){
-        tmd.first_leaf_page_id = page_id;
-        tmd.root_page_id = page_id;
-    }
-
-    Page meta;
-    init_meta_page(meta.data, tmd);
-    write_page(0,meta.data);
-
-    return page_id;
-}
-
-void Disk_Manager :: free_page(Table_Metadata &tmd,const int &pageId){
-    Page buffer;
-    Page meta;
-
-    init_free_page(&buffer,pageId,tmd.free_page_head);
-    tmd.free_page_head = pageId;
-
-    tmd.save_table_md(&meta);
-
-    write_page(0,&meta);
-    write_page(pageId, &buffer);
-}
-
-void Disk_Manager :: init_meta_page(void *buffer, const Table_Metadata &tmd){
-    memset(buffer,0,PAGE_SIZE);
-
-    char* index  = (char*)buffer;
-    memcpy(index, &tmd.total_page_count,4);
-    index+=4;
-
-    memcpy(index, &tmd.root_page_id,4);
-    index+=4;
-
-    memcpy(index, &tmd.first_leaf_page_id,4);
-    index+=4;
-
-    memcpy(index, &tmd.free_page_head,4);
-    index+=4;
-
-    memcpy(index, &tmd.leafnode_order,4);
-    index+=4;
-
-    memcpy(index, &tmd.internalnode_order,4);
-}
-
-void Disk_Manager::init_free_page(void *buffer, const int pageId,const int next_free){
-    memset(buffer, 0, PAGE_SIZE);
-    char* index  = (char*)buffer;
-
-    pagetype pt = FREEPAGE;
-
-    memcpy(index,&pt,4);index+=4;
-    memcpy(index,&pageId,4);index+=4;
-    memcpy(index,&next_free,4);
-}
-
-void Disk_Manager::init_meta_page(void *buffer, const int leafnode_order, const int internalnode_order) {
-    memset(buffer, 0, PAGE_SIZE);
-
-    char* index = (char*)buffer;
-
-    int total_page_count = 0;
-    int root_page_id = 0;
-    int first_leaf_page_id = 0;
-    int free_page_head = 0;
-
-    memcpy(index, &total_page_count, 4); index += 4;
-    memcpy(index, &root_page_id, 4); index += 4;
-    memcpy(index, &first_leaf_page_id, 4); index += 4;
-    memcpy(index, &free_page_head, 4); index += 4;
-
-    memcpy(index, &leafnode_order, 4); index += 4;
-    memcpy(index, &internalnode_order, 4);
-}
-
-void Disk_Manager::init_internal_page(void *buffer, int pageid, int parentid){
-    memset(buffer, 0, PAGE_SIZE);
-    char* index = (char*) buffer;
-
-    pagetype type = INTERNALNODE;
-    int key_count = 0;
-    int next = 0;
-    int prev = 0;
-    int free_bytes = PAGE_SIZE - sizeof(Header);
-
-    memcpy(index,&type,4); index+=4;
-    memcpy(index,&pageid,4); index+=4;
-    memcpy(index,&parentid,4); index+=4;
-    memcpy(index,&key_count,4); index+=4;
-    memcpy(index,&free_bytes,4); index+=4;
-    memcpy(index,&next,4); index+=4;
-    memcpy(index,&prev,4); index+=4;
-}
-
-void Disk_Manager::init_leaf_page(void *buffer, int pageid, int parentid,int nextleaf, int prevleaf){
-    memset(buffer, 0, PAGE_SIZE);
-    char* index = (char*) buffer;
-
-    pagetype type = LEAFNODE;
-    int key_count = 0;
-    int free_bytes = PAGE_SIZE - sizeof(Header);
-
-    memcpy(index,&type,4); index+=4;
-    memcpy(index,&pageid,4); index+=4;
-    memcpy(index,&parentid,4); index+=4;
-    memcpy(index,&key_count,4); index+=4;
-    memcpy(index,&free_bytes,4); index+=4;
-    memcpy(index,&nextleaf,4); index+=4;
-    memcpy(index,&prevleaf,4); index+=4;
-}
-
-void Table_Metadata::load_table_md(void *buffer){
-    char* index = (char*) buffer;
-
-    memcpy(&total_page_count,index,4); index+=4;
-    memcpy(&root_page_id,index,4); index+=4;
-    memcpy(&first_leaf_page_id,index,4); index+=4;
-    memcpy(&free_page_head,index,4); index+=4;
-    memcpy(&leafnode_order,index,4); index+=4;
-    memcpy(&internalnode_order,index,4); index+=4;
-}
-
-void Table_Metadata::save_table_md(void *buffer){
-    memset(buffer, 0, PAGE_SIZE);
-    char* index = (char*) buffer;
-
-    memcpy(index,&total_page_count,4); index+=4;
-    memcpy(index,&root_page_id,4); index+=4;
-    memcpy(index,&first_leaf_page_id,4); index+=4;
-    memcpy(index,&free_page_head,4); index+=4;
-    memcpy(index,&leafnode_order,4); index+=4;
-    memcpy(index,&internalnode_order,4); index+=4;
-}
-
-void Header::load_header(void *buffer){
-    char* index = (char*) buffer;
-
-    memcpy(&page_type,index,4); index+=4;
-    memcpy(&page_id,index,4); index+=4;
-
-    if(page_type == FREEPAGE){
-        memcpy(&nextleaf,index,4); return;
-    }
-    
-    memcpy(&parent_id,index,4); index+=4;
-    memcpy(&keys_count,index,4); index+=4;
-    memcpy(&free_bytes,index,4); index+=4;
-    
-    if(page_type==LEAFNODE){
-        memcpy(&nextleaf,index,4); index+=4;
-        memcpy(&prevleaf,index,4); index+=4;
-    }else{
-        nextleaf = 0;
-        prevleaf = 0;
-    }
-}
-
-void Header::save_header(void *buffer){
-    char* index = (char*) buffer;
-
-    memcpy(index,&page_type,4); index+=4;
-    memcpy(index,&page_id,4); index+=4;
-    memcpy(index,&parent_id,4); index+=4;
-    memcpy(index,&keys_count,4); index+=4;
-    memcpy(index,&free_bytes,4); index+=4;
-    memcpy(index,&nextleaf,4); index+=4;
-    memcpy(index,&prevleaf,4); index+=4;
-}
-
-Table_Metadata::Table_Metadata(){
-    leafnode_order=0;
-    internalnode_order=0;
-    total_page_count=0;
-    free_page_head=0;
-    root_page_id=0;
-    first_leaf_page_id=0;
-}
-
-BplusTree::BplusTree(Disk_Manager &dm_ref, Table_Metadata &tmd_ref, datatype type, int k_size)
-        : dm(dm_ref), tmd(tmd_ref), dt(type), key_size(k_size) {}
+BplusTree::BplusTree(Disk_Manager &dm_ref, Table_Metadata &tmd_ref, datatype type, int k_size, bool is_primary_)
+        : dm(dm_ref), tmd(tmd_ref), dt(type), key_size(k_size) ,is_primary(is_primary_){}
 
 void BplusTree::sync_metadata() {
     Page meta_pg;
@@ -343,7 +64,16 @@ int BplusTree::search_leaf(const void *key){
             int key_off = sizeof(Header) + sizeof(int) + i*(sizeof(int)+key_size);
             int child_off = sizeof(Header)+i*(sizeof(int)+key_size);
 
-            if(compare_keys(data+key_off ,dt,key,key_size)<0){
+            int compared = 0;
+            if(is_primary){
+                compared = compare_keys(data+key_off ,dt,key,key_size);
+            }
+            else{
+                compared = compare_composite(data+key_off ,dt,key,key_size);
+            }
+
+
+            if(compared<0){
                 //returns -1 if search_k<key
                 memcpy(&next_pid, data + child_off,sizeof(int));
                 break;
@@ -376,15 +106,20 @@ int BplusTree::find_in_leaf(const int &pageid ,const void *key,const int &row_si
 
     int end = h.keys_count-1;
     int start = 0;
-    int mid = (end-start)/2; 
+    int mid = (end+start)/2; 
     
     while(end >= start){
-        mid =start +  (end-start)/2; 
+        mid =(end + start)/2; 
 
         char* index = (char*)&buffer + row_size * mid + sizeof(Header) + key_off;
 
-        int compared = compare_keys(index,dt,key,key_size);
+        int compared = 0;
+        if(is_primary)
+        compared = compare_keys(index,dt,key,key_size);
         //returns 1 when key is smaller
+        else
+        compared = compare_composite(index,dt,key,key_size);
+
         
         if(compared == 0){return -(mid+1);}
         else if(compared==1){
@@ -557,8 +292,12 @@ int BplusTree::find_in_parent(const int &parentId ,const void *key){
 
         char* index = (char*)&buffer + pos_size * mid + sizeof(Header) +4;
 
-        int compared = compare_keys(index,dt,key,key_size);
+        int compared=0;
+        if(is_primary)
+        compared = compare_keys(index,dt,key,key_size);
         //returns 1 when key is smaller
+        else
+        compared = compare_composite(index,dt,key,key_size);
         
         if(compared == 0){return -(mid+1);}
         else if(compared==1){
@@ -1473,3 +1212,233 @@ void BplusTree::delete_root(){
 
     sync_metadata();
 }
+
+void BplusTree::scan_all(const int &row_size, function<void(const void*)> callback){
+    int curr_page = tmd.first_leaf_page_id;
+
+    while(curr_page!=0){
+        // load header and page
+        Header h;
+        Page pg;
+
+        dm.read_page(curr_page, &pg);
+        h.load_header(&pg);
+
+        char* row_ptr = (char*)&pg  +  sizeof(Header);
+
+        // read whole page
+        for(int i = 0 ; i<h.keys_count ; i++){
+            callback(row_ptr);
+            row_ptr += row_size;
+        }
+
+
+        //move to next page
+        curr_page = h.nextleaf;
+    }
+}
+
+void BplusTree::scan_forward(const int &row_size, const char* key,const int &key_off, function<void(const void*)> callback){
+    int curr_page = search_leaf(key);
+    bool first_page = true;
+
+    while(curr_page!=0){
+        // load header and page
+        Header h;
+        Page pg;
+
+        dm.read_page(curr_page, &pg);
+        h.load_header(&pg);
+
+        char* row_ptr = (char*)&pg  +  sizeof(Header);
+
+        // read pages
+        int i = 0;
+        if(first_page){
+            i = find_in_leaf(curr_page,key,row_size,key_off);
+
+            if(i<0)
+            i = -i-1;
+            
+            row_ptr += i*row_size;
+            first_page = false;
+        }
+
+        while(i<h.keys_count){
+            callback(row_ptr);
+            row_ptr += row_size;
+            i++;
+        }
+
+
+        //move to next page
+        curr_page = h.nextleaf;
+    }
+}
+
+void BplusTree::scan_backward(const int &row_size, const char* key,const int &key_off, function<void(const void*)> callback){
+    int curr_page = search_leaf(key);
+    bool first_page = true;
+
+    while(curr_page!=0){
+        // load header and page
+        Header h;
+        Page pg;
+
+        dm.read_page(curr_page, &pg);
+        h.load_header(&pg);
+
+        
+        // read pages
+        int row_idx = h.keys_count-1;
+        if(first_page){
+            int found_pos = find_in_leaf(curr_page, key, row_size, key_off);
+            
+            if (found_pos < 0) 
+            row_idx = (-found_pos) - 1; 
+            else 
+            row_idx = found_pos ; 
+            
+            first_page = false;
+        }
+        
+        char* row_ptr = (char*)&pg  +  sizeof(Header) + row_idx*row_size;
+
+        while(row_idx>=0){
+            callback(row_ptr);
+            row_ptr -= row_size;
+            row_idx--;
+        }
+
+
+        //move to prev page
+        curr_page = h.prevleaf;
+    }
+}
+
+void BplusTree::scan_point(const int &row_size, const char* key,const int &key_off, function<void(const void*)> callback){
+    int curr_page = search_leaf(key);
+    int curr_row = find_in_leaf(curr_page,key,row_size,key_off);
+
+    if(curr_row >= 0){
+        //error key not found
+    }
+
+    curr_row = -curr_row - 1;
+
+    // load header and page
+    Header h;
+    Page pg;
+
+    dm.read_page(curr_page, &pg);
+    h.load_header(&pg);
+
+    if (curr_row >= 0 && curr_row < h.keys_count) {
+        char* row_ptr = (char*)&pg + sizeof(Header) + (curr_row  * row_size);
+        callback(row_ptr);
+    }
+}
+
+
+void BplusTree::update_row(const void *key, const int &row_size,const int &key_off, const int &col_off, const int &col_size, const char* updated_value){
+    //find the page and row
+    int target_page = search_leaf(key);
+    int target_row = find_in_leaf(target_page,key,row_size,key_off);
+
+    if(target_row >= 0 ){
+        // row not fouond
+    }
+
+    target_row = -target_row - 1;
+
+    // load header and page
+    Header h;
+    Page pg;
+
+    dm.read_page(target_page, &pg);
+    h.load_header(&pg);
+
+    char* row_ptr = (char*)&pg  +  sizeof(Header) + row_size * target_row;
+    char* col_ptr = row_ptr + col_off;
+
+    memcpy(col_ptr, updated_value , col_size);
+    dm.write_page(target_page, &pg);
+}
+
+
+// // Helper to visualize the raw bytes as readable data
+// void debug_print_row(const void* data) {
+//     int id;
+//     char name[21]; // +1 for null terminator
+//     memset(name, 0, 21);
+
+//     // Extract ID from the first 4 bytes
+//     memcpy(&id, data, sizeof(int));
+//     // Extract Name from the next 20 bytes
+//     memcpy(name, (char*)data + sizeof(int), 20);
+
+//     cout << "  Row Data -> [ID: " << id << " | Name: " << name << "]" << endl;
+// }
+
+// int main() {
+//     // 1. Initializing System Components
+//     Disk_Manager dm;
+//     Table_Metadata tmd;
+    
+//     string table_name = "production_test";
+//     dm.create_file(table_name); // Your fixed function
+    
+//     // Config: ID (int, 4 bytes) + Name (char[20])
+//     int row_size = 24; 
+//     int key_size = 4;
+//     int key_off = 0;
+//     int name_off = 4;
+//     int name_size = 20;
+
+//     // Use the enum you've defined for int32
+//     BplusTree tree(dm, tmd, datatype::int32, key_size, true);
+//     tree.create_tree(row_size);
+
+//     cout << "--- Phase 1: Heavy Insertion (Triggering Splits) ---" << endl;
+//     for (int i = 1; i <= 50; i++) {
+//         char buffer[24];
+//         memset(buffer, 0, 24);
+
+//         // Pack the integer ID into the first 4 bytes
+//         memcpy(buffer, &i, sizeof(int));
+
+//         // Pack the string into the next 20 bytes
+//         string name_str = "Employee_" + to_string(i);
+//         strncpy(buffer + name_off, name_str.c_str(), name_size);
+
+//         tree.insert_row(buffer, row_size, key_off);
+//     }
+//     cout << "Inserted 50 records." << endl;
+
+//     cout << "\n--- Phase 2: Sequential Scan (Scan All) ---" << endl;
+//     tree.scan_all(row_size, debug_print_row);
+
+//     cout << "\n--- Phase 3: Point Lookup (ID 25) ---" << endl;
+//     int search_id = 25;
+//     // Cast the address of the int to char* so the tree can compare bytes
+//     tree.scan_point(row_size, (char*)&search_id, key_off, debug_print_row);
+
+//     cout << "\n--- Phase 4: In-Place Update (Updating Name of ID 25) ---" << endl;
+//     // Note: PK (ID) is immutable as per your design
+//     const char* updated_name = "Manager_Senior_25"; 
+//     tree.update_row((char*)&search_id, row_size, key_off, name_off, name_size, updated_name);
+    
+//     cout << "Verifying Update:" << endl;
+//     tree.scan_point(row_size, (char*)&search_id, key_off, debug_print_row);
+
+//     cout << "\n--- Phase 5: Range Scan Forward (ID >= 45) ---" << endl;
+//     int start_id = 45;
+//     tree.scan_forward(row_size, (char*)&start_id, key_off, debug_print_row);
+
+//     cout << "\n--- Phase 6: Bounded Scan (ID < 10) ---" << endl;
+//     int end_id = 10;
+//     tree.scan_backward(row_size, (char*)&end_id, key_off, debug_print_row);
+
+//     cout << "\n--- SUCCESS: Engine Verified ---" << endl;
+//     return 0;
+// }

@@ -7,24 +7,26 @@
 #include "filter.h"
 using namespace std;
 
+#define max_columns 20
+#define max_ROWxCOLUMN 4096
 
 
 class create_operation {
 public:
-    #define max_columns 20
     string table_name;
     string column_names[max_columns];
     datatype column_dtypes[max_columns];
     int column_size[max_columns];
+    int column_index[max_columns];
     int num_of_col;
     DB_error error;
 };
 
 class insert_operation {
 public:
-    #define max_ROWxCOLUMN 4096
     string table_name;
     string column_data[max_ROWxCOLUMN];
+    int column_index[max_columns];
     int col_data_size;
     DB_error error;
 };
@@ -32,6 +34,7 @@ public:
 class select_operation {
 public:
     string table_name;
+    int column_index[max_columns];
     ConditionNode* root;
     DB_error error;
 
@@ -40,6 +43,7 @@ public:
 class update_operation {
 public:
     string table_name;
+    int column_index[max_columns];
     SetClause sc;
     ConditionNode* root;
     DB_error error;
@@ -48,6 +52,7 @@ public:
 class delete_operation {
 public:
     string table_name;
+    int column_index[max_columns];
     ConditionNode* root;
     DB_error error;
 };
@@ -57,6 +62,7 @@ int precedence(string op);
 class operation {
 public:
     string operation_type;
+    bool clustered_storage;
     DB_error error;
 
     select_operation select;
