@@ -3,6 +3,7 @@
 #include<bits/stdc++.h>
 #include "DiskManager.h"
 #include "utils.h"
+#include "error.h"
 #include "BPlusTree.h"
 using namespace std;
 
@@ -153,7 +154,7 @@ void BplusTree::insert_row( const void* row,const int &row_size, const int &key_
 
     if(rId < 0){
         //the key already exists and we cannot create a copy of pk
-        //code tbu
+        throw DB_error(ERR_RUNTIME, "Primary key is unique: ");
         return ;
     }
 

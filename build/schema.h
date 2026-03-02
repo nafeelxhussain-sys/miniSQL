@@ -25,10 +25,12 @@ public:
     DB_error create_schema_file(string db_name, string table_name, uint8_t num_of_cols,
         string* name, int* size, datatype* type,int* col_index,uint8_t clustered=0);
     void print_schema();
-
     int getColumnIndex(string column_name);
     int getColumnOffset(int colIndex);
     int getColumnSize(int colIndex);
+    int getIndexCount();
+    int getPkOffset();
     datatype getColumnType(int colIndex);
     int getColumnIndexType(string column_name_);
+    int getColumnIndexType(int colIndex);
 };

@@ -181,6 +181,7 @@ int schema::getColumnSize(int colIndex) {
     return col_offset[colIndex + 1] - col_offset[colIndex];
 }
 
+
 datatype schema::getColumnType(int colIndex) { return dtypes[colIndex]; }
 
 int schema::getColumnIndex(string column_name_){
@@ -191,6 +192,29 @@ int schema::getColumnIndex(string column_name_){
     }
 
     return -1;
+}
+int schema::getPkOffset(){
+    int off = -1;
+    for(int i = 0 ; i<num_of_cols ; i++){
+        if(col_index[i]==1){
+           off=col_offset[i];
+        }
+    }
+    return off;
+}
+
+int schema::getIndexCount(){
+    int cnt = 0;
+    for(int i = 0 ; i<num_of_cols ; i++){
+        if(col_index[i]==2){
+           cnt++;
+        }
+    }
+    return cnt;
+}
+
+int schema::getColumnIndexType(int col){
+    return col_index[col];
 }
 
 int schema::getColumnIndexType(string column_name_){

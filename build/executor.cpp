@@ -3,6 +3,7 @@
 #include "BplusTree.h"
 #include "Index.h"
 #include "DiskManager.h"
+#include "DataHandling.h"
 #include "error.h"
 #include "utils.h"
 #include "error.h"
@@ -299,16 +300,116 @@ void executor::execute_create_cluster(create_operation &o){
 
 
 void executor::execute_insert_cluster(insert_operation &o){
+    string file_name = "..\\data\\main_"  + o.table_name + ".tbl";
 
+    // handle catalog
+    catalog cat;
+    if (!cat.db_exists("..\\data\\main.catalog")) {
+        o.error = DB_error(ERR_UNKNOWN_TABLE, "catalog not found: ");
+        cout<<o.error.message<<endl;
+        return;
+    }
+    o.error = cat.load_catalog("main");
+    if(!o.error.ok()){
+        cout<<o.error.message<<endl;
+        return;
+    }
+    if(!cat.has_table(o.table_name)){
+        o.error = DB_error(ERR_RUNTIME,"table " + o.table_name + " does not exists");
+        cout<<o.error.message<<endl;
+        return;
+    }
+ 
+    //handle schema
+    schema s;
+    o.error = s.load_schema("main",o.table_name);
+    if (!o.error.ok()) {
+        cout<<o.error.message<<endl;
+        return;
+    }
+
+    //data verification
+    DataHandler dh;
+    o.error = dh.data_verify(s,o.column_data,o.col_data_size);
+    if (!o.error.ok()) {
+        cout<<o.error.message<<endl;
+        return;
+    }
+
+    //load the main file
+    Disk_Manager dm_main;
+    Table_Metadata tmd_main;
+    
+    dm_main.open_file(o.table_name);
+    BplusTree tree(dm_main, tmd_main,int32, sizeof(int),true);
+    tree.open_tree();
+    
+    
+    //load the index files
+    int cnt = s.getIndexCount();
+    
+    Disk_Manager dm_index[cnt];
+    Table_Metadata tmd_index[cnt];
+    Index* tree_index[cnt];
+    int reference[s.num_of_cols];//colIndex-->treeIndex
+ 
+    for (int i = 0; i < s.num_of_cols; i++)
+    reference[i] = -1;
+    
+    for(int i = 0, j = 0; i < s.num_of_cols ; i++){
+        if(s.getColumnIndexType(i)==2){
+            dm_index[j].open_index(o.table_name, s.column_name[i]);
+            tree_index[j] = new Index(dm_index[j],tmd_index[j],s.getColumnType(i),sizeof(int),s.getColumnSize(i));
+            tree_index[j]->open_index();
+            reference[i]=j;
+            j++;
+        }
+    }
+    
+    int rows_to_insert = o.col_data_size / s.num_of_cols;
+    int key_off = s.getPkOffset();
+
+    try{
+    for(int r = 0 ; r<rows_to_insert ; r++){
+        //insert into main file
+        char row_main[s.row_size];
+        string* col_ptr = o.column_data + r*s.num_of_cols ;
+
+        dh.converter(s,col_ptr,row_main);
+        tree.insert_row((void*)row_main,s.row_size,key_off);
+
+        for(int i = 0; i<s.num_of_cols ; i++){
+            //insert into index files
+            int j = reference[i];
+            if(j == -1) continue;
+
+            int index_size = s.getColumnSize(i);
+            int index_row_size = index_size + sizeof(int);
+            char* index_ptr = row_main + s.getColumnOffset(i);
+            char* key_ptr = row_main + key_off;
+            char row_index[index_row_size];
+
+            dh.converter(row_index,index_ptr,key_ptr,index_size,sizeof(int));
+            tree_index[j]->insert_index(row_index);
+        }
+    }}
+    catch(DB_error &e){
+        cout<<e.message<<endl;
+    }
+
+    for (int i = 0; i < cnt; i++) {
+        delete tree_index[i];
+    }
+    
+    cout<<"data inserted into : " + o.table_name<<endl;
+    return;
 }
-
 
 void executor::execute_select_pklookup(select_operation &o){}
 void executor::execute_select_sklookup(select_operation &o){}
 void executor::execute_select_pkrange(select_operation &o){}
 void executor::execute_select_skrange(select_operation &o){}
 void executor::execute_select_fullscan(select_operation &o){}
-
 
 void executor::execute_update_pklookup(update_operation &o){}
 void executor::execute_update_sklookup(update_operation &o){}
@@ -321,6 +422,5 @@ void executor::execute_delete_sklookup(delete_operation &o){}
 void executor::execute_delete_pkrange(delete_operation &o){}
 void executor::execute_delete_skrange(delete_operation &o){}
 void executor::execute_delete_fullscan(delete_operation &o){}
-
 
 void executor::execute_drop_cluster(select_operation &o){}
