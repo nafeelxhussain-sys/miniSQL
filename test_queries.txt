@@ -16,10 +16,6 @@ CREATE TABLE users (
     active bool 
 );
 
-INSERT INTO users VALUES
-(1,'Alice',21,true),
-(2,'Bob',34,false),
-(3,'Charlie',28,true);
 
 INSERT INTO users VALUES
 (1,'Alice',21,true),

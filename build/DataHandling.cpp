@@ -102,7 +102,7 @@ void DataHandler::print_row(schema& s, const char* row) {
     for(int c = 0; c<s.num_of_cols ; c++){
         datatype dt = s.getColumnType(c);
         int col_size = s.getColumnSize(c);
-        char* start = (char*)row + s.col_offset[c];
+        const char* start = row + s.col_offset[c];
 
         if(dt==int32){
             int value;
@@ -165,4 +165,19 @@ void DataHandler::converter(char* index_row, char* index_ptr, char* key_ptr, int
     memcpy(ptr, index_ptr,index_size);
     ptr += index_size;
     memcpy(ptr, key_ptr,key_size);
+}
+
+void DataHandler::converter(char* ptr, string value, datatype dt, int size){
+    if(dt==int32){
+        int x = stoi(value);
+        memcpy(ptr, &x, sizeof(int));
+    }
+    else if(dt == bool8){
+        uint8_t x = stoi(value);
+        memcpy(ptr, &x, sizeof(uint8_t));
+    }
+    else{
+        memcpy(ptr, value.c_str(), value.size());
+        memset(ptr + value.size() , 0 , size - value.size());
+    }
 }

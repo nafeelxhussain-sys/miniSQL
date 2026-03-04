@@ -11,4 +11,5 @@ class DataHandler{
     void print_row(schema& s, const char* row) ;
     void converter(schema& s, string *data, char* row) ;
     void converter(char* index_row, char* index_ptr, char* key_ptr, int index_size, int key_size) ;
+    void converter(char* ptr , string value, datatype dt, int size) ;
 };

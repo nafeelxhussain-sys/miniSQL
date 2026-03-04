@@ -121,7 +121,7 @@ void where_clause :: delete_(stack<ConditionNode*> &node){
 bool where_clause :: evaluvate_tree(ConditionNode* root, schema &s,const unsigned char* row_buffer){
     //base case
     if(root == nullptr){
-        return false;
+        return true;
     }
 
     bool left=false, right=false, center=false;

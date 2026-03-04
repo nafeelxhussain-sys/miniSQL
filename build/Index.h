@@ -23,9 +23,9 @@ class Index{
     void insert_index(const void* row);
     void update_index(const void* old_, const void* new_);
     void delete_index(const void* row);
-    void find_all_pks(const void* target_value,datatype dt,function<void(const void*)> callback);
-    void find_all_pks_forward(const void* target_value, datatype dt,function<void(const void*)> callback);
-    void find_all_pks_backward(const void* target_value, datatype dt,function<void(const void*)> callback);
+    void find_all_pks(const void* target_value,datatype dt,function<void(const char*)> callback);
+    void find_all_pks_forward(const void* target_value, datatype dt,function<void(const char*)> callback);
+    void find_all_pks_backward(const void* target_value, datatype dt,function<void(const char*)> callback);
 
     // void display_tree();
     // void print_tree_recursive(int pid, int level);

@@ -20,11 +20,12 @@ enum AccessType{
 struct AccessPath{
     AccessType type;
 
-    string search_value;   
+    string search_value;
+    string col_name;   
     datatype dt;
     
     bool is_range;
-    string operation;// >=, >, <, <=
+    bool forward;
 };
 
 class QueryOptimizer {

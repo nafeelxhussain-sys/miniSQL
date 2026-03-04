@@ -66,7 +66,7 @@ void QueryOptimizer::traverse_tree(ConditionNode* root, schema &s, AccessPath &a
 
         int path = 0;
 
-        if(index_type==0) path = 5;
+        if(index_type==0 || root->operand == "!=") path = 5;
         else if(index_type==1 && point) path = 1;
         else if(index_type==1 && !point) path = 3;
         else if(index_type==2 && point) path = 2;
@@ -80,7 +80,8 @@ void QueryOptimizer::traverse_tree(ConditionNode* root, schema &s, AccessPath &a
             int col_no = s.getColumnIndex(root->column);
             acc_path.dt = s.getColumnType(col_no);
             acc_path.search_value = root->value;
-            acc_path.operation = root->operand;
+            acc_path.forward = (root->operand == ">=" || root->operand == ">");
+            acc_path.col_name = root->column;
         }
     }
 }

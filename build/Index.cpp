@@ -137,7 +137,7 @@ int Index::search_upper_bound(const void* target_value, datatype dt){
     return current_pid;
 }
 
-void Index::find_all_pks(const void* target_value, datatype dt,function<void(const void*)> callback){
+void Index::find_all_pks(const void* target_value, datatype dt,function<void(const char*)> callback){
     int PageId = search_lower_bound(target_value,dt);
     if(PageId==0) return ;
 
@@ -182,7 +182,7 @@ void Index::find_all_pks(const void* target_value, datatype dt,function<void(con
     return ;
 }
 
-void Index::find_all_pks_forward(const void* target_value, datatype dt,function<void(const void*)> callback){
+void Index::find_all_pks_forward(const void* target_value, datatype dt,function<void(const char*)> callback){
     int PageId = search_lower_bound(target_value,dt);
     if(PageId==0) return ;
 
@@ -220,7 +220,7 @@ void Index::find_all_pks_forward(const void* target_value, datatype dt,function<
     return ;
 }
 
-void Index::find_all_pks_backward(const void* target_value, datatype dt,function<void(const void*)> callback){
+void Index::find_all_pks_backward(const void* target_value, datatype dt,function<void(const char*)> callback){
     int PageId = search_upper_bound(target_value,dt);
     if(PageId==0) return ;
 

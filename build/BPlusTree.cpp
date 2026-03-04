@@ -1214,7 +1214,7 @@ void BplusTree::delete_root(){
     sync_metadata();
 }
 
-void BplusTree::scan_all(const int &row_size, function<void(const void*)> callback){
+void BplusTree::scan_all(const int &row_size, function<void(const char*)> callback){
     int curr_page = tmd.first_leaf_page_id;
 
     while(curr_page!=0){
@@ -1239,7 +1239,7 @@ void BplusTree::scan_all(const int &row_size, function<void(const void*)> callba
     }
 }
 
-void BplusTree::scan_forward(const int &row_size, const char* key,const int &key_off, function<void(const void*)> callback){
+void BplusTree::scan_forward(const int &row_size, const char* key,const int &key_off, function<void(const char*)> callback){
     int curr_page = search_leaf(key);
     bool first_page = true;
 
@@ -1277,7 +1277,7 @@ void BplusTree::scan_forward(const int &row_size, const char* key,const int &key
     }
 }
 
-void BplusTree::scan_backward(const int &row_size, const char* key,const int &key_off, function<void(const void*)> callback){
+void BplusTree::scan_backward(const int &row_size, const char* key,const int &key_off, function<void(const char*)> callback){
     int curr_page = search_leaf(key);
     bool first_page = true;
 
@@ -1317,7 +1317,7 @@ void BplusTree::scan_backward(const int &row_size, const char* key,const int &ke
     }
 }
 
-void BplusTree::scan_point(const int &row_size, const char* key,const int &key_off, function<void(const void*)> callback){
+void BplusTree::scan_point(const int &row_size, const char* key,const int &key_off, function<void(const char*)> callback){
     int curr_page = search_leaf(key);
     int curr_row = find_in_leaf(curr_page,key,row_size,key_off);
 

@@ -16,7 +16,7 @@ void executor::execute(operation &o, AccessPath &acc_path) {
         cout << o.error.message << endl;
         return;
     }
-
+    
     if (o.operation_type == "CREATE") {
         if(acc_path.type!=heap) execute_create_cluster(o.create);
         else  execute_create_heap(o.create);
@@ -28,34 +28,34 @@ void executor::execute(operation &o, AccessPath &acc_path) {
     }
 
     else if (o.operation_type == "SELECT") {
-        if(acc_path.type==1) execute_select_pklookup(o.select);
-        else if(acc_path.type==2) execute_select_sklookup(o.select);
-        else if(acc_path.type==3) execute_select_pkrange(o.select);
-        else if(acc_path.type==4) execute_select_skrange(o.select);
-        else if(acc_path.type==5) execute_select_fullscan(o.select);
+        if(acc_path.type==1) execute_select_pklookup(o.select, acc_path);
+        else if(acc_path.type==2) execute_select_sklookup(o.select, acc_path);
+        else if(acc_path.type==3) execute_select_pkrange(o.select, acc_path);
+        else if(acc_path.type==4) execute_select_skrange(o.select, acc_path);
+        else if(acc_path.type==5) execute_select_fullscan(o.select, acc_path);
         else if(acc_path.type==7) execute_select_heap(o.select);
     }
 
     else if (o.operation_type == "UPDATE") {
-        if(acc_path.type==1) execute_update_pklookup(o.update);
-        else if(acc_path.type==2) execute_update_sklookup(o.update);
-        else if(acc_path.type==3) execute_update_pkrange(o.update);
-        else if(acc_path.type==4) execute_update_skrange(o.update);
-        else if(acc_path.type==5) execute_update_fullscan(o.update);
+        if(acc_path.type==1) execute_update_pklookup(o.update, acc_path);
+        else if(acc_path.type==2) execute_update_sklookup(o.update, acc_path);
+        else if(acc_path.type==3) execute_update_pkrange(o.update, acc_path);
+        else if(acc_path.type==4) execute_update_skrange(o.update, acc_path);
+        else if(acc_path.type==5) execute_update_fullscan(o.update, acc_path);
         else if(acc_path.type==7) execute_update_heap(o.update);
     }
 
     else if (o.operation_type == "DELETE") {
-        if(acc_path.type==1) execute_delete_pklookup(o.delete_);
-        else if(acc_path.type==2) execute_delete_sklookup(o.delete_);
-        else if(acc_path.type==3) execute_delete_pkrange(o.delete_);
-        else if(acc_path.type==4) execute_delete_skrange(o.delete_);
-        else if(acc_path.type==5) execute_delete_fullscan(o.delete_);
+        if(acc_path.type==1) execute_delete_pklookup(o.delete_, acc_path);
+        else if(acc_path.type==2) execute_delete_sklookup(o.delete_, acc_path);
+        else if(acc_path.type==3) execute_delete_pkrange(o.delete_, acc_path);
+        else if(acc_path.type==4) execute_delete_skrange(o.delete_, acc_path);
+        else if(acc_path.type==5) execute_delete_fullscan(o.delete_, acc_path);
         else if(acc_path.type==7) execute_delete_heap(o.delete_);
     }
 
     else if (o.operation_type == "DROP") {
-        if(acc_path.type!=heap)execute_drop_cluster(o.select);
+        if(acc_path.type!=heap)execute_drop_cluster(o.select, acc_path);
         else execute_drop_heap(o.select);
     }
 
@@ -405,22 +405,382 @@ void executor::execute_insert_cluster(insert_operation &o){
     return;
 }
 
-void executor::execute_select_pklookup(select_operation &o){}
-void executor::execute_select_sklookup(select_operation &o){}
-void executor::execute_select_pkrange(select_operation &o){}
-void executor::execute_select_skrange(select_operation &o){}
-void executor::execute_select_fullscan(select_operation &o){}
+void executor::execute_select_pklookup(select_operation &o, AccessPath &acc){
+    string file_name = "..\\data\\main_"  + o.table_name + ".tbl";
 
-void executor::execute_update_pklookup(update_operation &o){}
-void executor::execute_update_sklookup(update_operation &o){}
-void executor::execute_update_pkrange(update_operation &o){}
-void executor::execute_update_skrange(update_operation &o){}
-void executor::execute_update_fullscan(update_operation &o){}
+    // handle catalog
+    catalog cat;
+    if (!cat.db_exists("..\\data\\main.catalog")) {
+        o.error = DB_error(ERR_UNKNOWN_TABLE, "catalog not found: ");
+        cout<<o.error.message<<endl;
+        return;
+    }
+    o.error = cat.load_catalog("main");
+    if(!o.error.ok()){
+        cout<<o.error.message<<endl;
+        return;
+    }
+    if(!cat.has_table(o.table_name)){
+        o.error = DB_error(ERR_RUNTIME,"table " + o.table_name + " does not exists");
+        cout<<o.error.message<<endl;
+        return;
+    }
+ 
+    //handle schema
+    schema s;
+    o.error = s.load_schema("main",o.table_name);
+    if (!o.error.ok()) {
+        cout<<o.error.message<<endl;
+        return;
+    }
 
-void executor::execute_delete_pklookup(delete_operation &o){}
-void executor::execute_delete_sklookup(delete_operation &o){}
-void executor::execute_delete_pkrange(delete_operation &o){}
-void executor::execute_delete_skrange(delete_operation &o){}
-void executor::execute_delete_fullscan(delete_operation &o){}
+    //load the main file
+    Disk_Manager dm_main;
+    Table_Metadata tmd_main;
+    
+    dm_main.open_file(o.table_name);
+    BplusTree tree(dm_main, tmd_main,int32, sizeof(int),true);
+    tree.open_tree();
 
-void executor::execute_drop_cluster(select_operation &o){}
+    //read the main file
+    DataHandler dh;
+    where_clause wh;
+    bool found = false;
+    int row_size = s.row_size;
+    int key_off = s.getPkOffset();
+    char search_key[sizeof(int)];
+    dh.converter(search_key, acc.search_value, int32, sizeof(int));
+
+    try{
+    tree.scan_point(row_size,search_key, key_off,[&](const char* ptr){
+        if(wh.evaluvate_tree(o.root, s, (const unsigned char*)ptr)){
+        dh.print_row(s,ptr);
+        found = true;
+        }
+    });}
+    catch(DB_error &db){
+        cout<<db.message<<endl;
+        return;
+    }
+
+    if(!found){
+        cout<<"No matches found: "<<endl;
+    }
+}
+
+void executor::execute_select_sklookup(select_operation &o, AccessPath &acc){
+    string file_name = "..\\data\\main_"  + o.table_name + ".tbl";
+
+    // handle catalog
+    catalog cat;
+    if (!cat.db_exists("..\\data\\main.catalog")) {
+        o.error = DB_error(ERR_UNKNOWN_TABLE, "catalog not found: ");
+        cout<<o.error.message<<endl;
+        return;
+    }
+    o.error = cat.load_catalog("main");
+    if(!o.error.ok()){
+        cout<<o.error.message<<endl;
+        return;
+    }
+    if(!cat.has_table(o.table_name)){
+        o.error = DB_error(ERR_RUNTIME,"table " + o.table_name + " does not exists");
+        cout<<o.error.message<<endl;
+        return;
+    }
+ 
+    //handle schema
+    schema s;
+    o.error = s.load_schema("main",o.table_name);
+    if (!o.error.ok()) {
+        cout<<o.error.message<<endl;
+        return;
+    }
+
+    //load the main file
+    Disk_Manager dm_main;
+    Table_Metadata tmd_main;
+    
+    dm_main.open_file(o.table_name);
+    BplusTree tree(dm_main, tmd_main,int32, sizeof(int),true);
+    tree.open_tree();
+    
+    
+    //load the index file    
+    Disk_Manager dm_index;
+    Table_Metadata tmd_index;
+    
+    int col_no = s.getColumnIndex(acc.col_name);
+    datatype dt = s.getColumnType(col_no);
+    int index_size = s.getColumnSize(col_no);
+
+    dm_index.open_index(o.table_name , acc.col_name);
+    Index tree_index(dm_index, tmd_index, dt, sizeof(int), index_size);
+    tree_index.open_index();
+    
+
+    //read the index file
+    DataHandler dh;
+    where_clause wh;
+    bool found = false;
+    int index_row_size = index_size + sizeof(int);
+    int primary_row_size = s.row_size;
+    int key_off = s.getPkOffset();
+    char search_key[index_row_size];
+    dh.converter(search_key, acc.search_value, dt, index_row_size);
+
+    try{
+    tree_index.find_all_pks(search_key,dt,[&](const char* ptr_to_index){
+        tree.scan_point(primary_row_size, ptr_to_index,key_off, [&](const char* ptr_to_prim){
+            if(wh.evaluvate_tree(o.root, s, (const unsigned char*)ptr_to_prim)){
+            dh.print_row(s,ptr_to_prim);
+            found = true;
+        }});
+    });}
+    catch(DB_error &db){
+        cout<<db.message<<endl;
+        return;
+    }
+
+    if(!found){
+        cout<<"No matches found: "<<endl;
+    }
+}
+
+void executor::execute_select_pkrange(select_operation &o, AccessPath &acc){
+    string file_name = "..\\data\\main_"  + o.table_name + ".tbl";
+
+    // handle catalog
+    catalog cat;
+    if (!cat.db_exists("..\\data\\main.catalog")) {
+        o.error = DB_error(ERR_UNKNOWN_TABLE, "catalog not found: ");
+        cout<<o.error.message<<endl;
+        return;
+    }
+    o.error = cat.load_catalog("main");
+    if(!o.error.ok()){
+        cout<<o.error.message<<endl;
+        return;
+    }
+    if(!cat.has_table(o.table_name)){
+        o.error = DB_error(ERR_RUNTIME,"table " + o.table_name + " does not exists");
+        cout<<o.error.message<<endl;
+        return;
+    }
+ 
+    //handle schema
+    schema s;
+    o.error = s.load_schema("main",o.table_name);
+    if (!o.error.ok()) {
+        cout<<o.error.message<<endl;
+        return;
+    }
+
+    //load the main file
+    Disk_Manager dm_main;
+    Table_Metadata tmd_main;
+    
+    dm_main.open_file(o.table_name);
+    BplusTree tree(dm_main, tmd_main,int32, sizeof(int),true);
+    tree.open_tree();
+
+    //read the main file
+    DataHandler dh;
+    where_clause wh;
+    bool found = false;
+    int row_size = s.row_size;
+    int key_off = s.getPkOffset();
+    char search_key[sizeof(int)];
+    dh.converter(search_key, acc.search_value, int32, sizeof(int));
+
+    try{
+    if(acc.forward){
+        tree.scan_forward(row_size,search_key, key_off,[&](const char* ptr){
+        if(wh.evaluvate_tree(o.root, s, (const unsigned char*)ptr)){
+            dh.print_row(s,ptr);
+            found = true;
+        }});
+    }
+    else{
+        tree.scan_backward(row_size,search_key, key_off,[&](const char* ptr){
+        if(wh.evaluvate_tree(o.root, s, (const unsigned char*)ptr)){
+            dh.print_row(s,ptr);
+            found = true;
+        }});
+    }}
+    catch(DB_error &db){
+        cout<<db.message<<endl;
+        return;
+    }
+
+    if(!found){
+        cout<<"No matches found: "<<endl;
+    }
+}
+
+void executor::execute_select_skrange(select_operation &o, AccessPath &acc){
+    string file_name = "..\\data\\main_"  + o.table_name + ".tbl";
+
+    // handle catalog
+    catalog cat;
+    if (!cat.db_exists("..\\data\\main.catalog")) {
+        o.error = DB_error(ERR_UNKNOWN_TABLE, "catalog not found: ");
+        cout<<o.error.message<<endl;
+        return;
+    }
+    o.error = cat.load_catalog("main");
+    if(!o.error.ok()){
+        cout<<o.error.message<<endl;
+        return;
+    }
+    if(!cat.has_table(o.table_name)){
+        o.error = DB_error(ERR_RUNTIME,"table " + o.table_name + " does not exists");
+        cout<<o.error.message<<endl;
+        return;
+    }
+ 
+    //handle schema
+    schema s;
+    o.error = s.load_schema("main",o.table_name);
+    if (!o.error.ok()) {
+        cout<<o.error.message<<endl;
+        return;
+    }
+
+    //load the main file
+    Disk_Manager dm_main;
+    Table_Metadata tmd_main;
+    
+    dm_main.open_file(o.table_name);
+    BplusTree tree(dm_main, tmd_main,int32, sizeof(int),true);
+    tree.open_tree();
+    
+    
+    //load the index file    
+    Disk_Manager dm_index;
+    Table_Metadata tmd_index;
+    
+    int col_no = s.getColumnIndex(acc.col_name);
+    datatype dt = s.getColumnType(col_no);
+    int index_size = s.getColumnSize(col_no);
+
+    dm_index.open_index(o.table_name , acc.col_name);
+    Index tree_index(dm_index, tmd_index, dt, sizeof(int), index_size);
+    tree_index.open_index();
+    
+
+    //read the index file
+    DataHandler dh;
+    where_clause wh;
+    bool found = false;
+    int index_row_size = index_size + sizeof(int);
+    int primary_row_size = s.row_size;
+    int key_off = s.getPkOffset();
+    char search_key[index_row_size];
+    dh.converter(search_key, acc.search_value, dt, index_row_size);
+
+    try{
+    if(acc.forward){
+        tree_index.find_all_pks_forward(search_key,dt,[&](const char* ptr_to_index){
+            tree.scan_point(primary_row_size, ptr_to_index,key_off, [&](const char* ptr_to_prim){
+                if(wh.evaluvate_tree(o.root, s, (const unsigned char*)ptr_to_prim)){
+                    dh.print_row(s,ptr_to_prim);
+                    found = true;
+                }
+            });
+        });
+        }
+    else{
+        tree_index.find_all_pks_backward(search_key,dt,[&](const char* ptr_to_index){
+            tree.scan_point(primary_row_size, ptr_to_index,key_off, [&](const char* ptr_to_prim){
+                if(wh.evaluvate_tree(o.root, s, (const unsigned char*)ptr_to_prim)){
+                dh.print_row(s,ptr_to_prim);
+                found = true;
+                }
+            });
+        });
+    }}
+    catch(DB_error &db){
+        cout<<db.message<<endl;
+        return;
+    }
+
+    if(!found){
+        cout<<"No matches found: "<<endl;
+    }
+}
+
+void executor::execute_select_fullscan(select_operation &o, AccessPath &acc){
+    string file_name = "..\\data\\main_"  + o.table_name + ".tbl";
+
+    // handle catalog
+    catalog cat;
+    if (!cat.db_exists("..\\data\\main.catalog")) {
+        o.error = DB_error(ERR_UNKNOWN_TABLE, "catalog not found: ");
+        cout<<o.error.message<<endl;
+        return;
+    }
+    o.error = cat.load_catalog("main");
+    if(!o.error.ok()){
+        cout<<o.error.message<<endl;
+        return;
+    }
+    if(!cat.has_table(o.table_name)){
+        o.error = DB_error(ERR_RUNTIME,"table " + o.table_name + " does not exists");
+        cout<<o.error.message<<endl;
+        return;
+    }
+ 
+    //handle schema
+    schema s;
+    o.error = s.load_schema("main",o.table_name);
+    if (!o.error.ok()) {
+        cout<<o.error.message<<endl;
+        return;
+    }
+
+    //load the main file
+    Disk_Manager dm_main;
+    Table_Metadata tmd_main;
+    
+    dm_main.open_file(o.table_name);
+    BplusTree tree(dm_main, tmd_main,int32, sizeof(int),true);
+    tree.open_tree();
+
+    //read the main file
+    DataHandler dh;
+    where_clause wh;
+    bool found = false;
+    int row_size = s.row_size;
+
+    try{
+    tree.scan_all(row_size,[&](const char* ptr){
+    if(wh.evaluvate_tree(o.root, s, (const unsigned char*)ptr)){
+        dh.print_row(s,ptr);
+        found = true;
+    }});
+    }
+    catch(DB_error &db){
+        cout<<db.message<<endl;
+        return;
+    }
+    
+
+    if(!found){
+        cout<<"No matches found: "<<endl;
+    }
+}
+
+void executor::execute_update_pklookup(update_operation &o, AccessPath &acc){}
+void executor::execute_update_sklookup(update_operation &o, AccessPath &acc){}
+void executor::execute_update_pkrange(update_operation &o, AccessPath &acc){}
+void executor::execute_update_skrange(update_operation &o, AccessPath &acc){}
+void executor::execute_update_fullscan(update_operation &o, AccessPath &acc){}
+
+void executor::execute_delete_pklookup(delete_operation &o, AccessPath &acc){}
+void executor::execute_delete_sklookup(delete_operation &o, AccessPath &acc){}
+void executor::execute_delete_pkrange(delete_operation &o, AccessPath &acc){}
+void executor::execute_delete_skrange(delete_operation &o, AccessPath &acc){}
+void executor::execute_delete_fullscan(delete_operation &o, AccessPath &acc){}
+
+void executor::execute_drop_cluster(select_operation &o, AccessPath &acc){}

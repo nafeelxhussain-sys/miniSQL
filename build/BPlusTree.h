@@ -53,11 +53,11 @@ class BplusTree
 
     void delete_row( const int &row_size, const void *key_ptr, const int &key_off);
 
-    void scan_all(const int &row_size, function<void(const void*)> callback);
+    void scan_all(const int &row_size, function<void(const char*)> callback);
 
-    void scan_forward(const int &row_size,const char* key,const int &key_off,function<void(const void*)> callback);
+    void scan_forward(const int &row_size,const char* key,const int &key_off,function<void(const char*)> callback);
 
-    void scan_backward(const int &row_size, const char* key,const int &key_off,function<void(const void*)> callback);
+    void scan_backward(const int &row_size, const char* key,const int &key_off,function<void(const char*)> callback);
     
-    void scan_point(const int &row_size, const char* key,const int &key_off,function<void(const void*)> callback);
+    void scan_point(const int &row_size, const char* key,const int &key_off,function<void(const char*)> callback);
 };
