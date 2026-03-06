@@ -3,7 +3,7 @@
 #include <fstream>
 // #include"utils.h"
 using namespace std;
-#define PAGE_SIZE 128
+#define PAGE_SIZE 4096
 #define MAX_KEY_SIZE 32
 
 struct SplitInfo

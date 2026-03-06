@@ -74,13 +74,14 @@ public:
 
 
 class query_processor {
-    #define max_tokens 1024
+    #define max_tokens 50000
     int token_count = 0;
-    string tokens[max_tokens];
+    string* tokens = new string[max_tokens];
 
     public:
     void print();
     void tokenizer(string input);
+    ~query_processor();
 
     operation command_router();
 

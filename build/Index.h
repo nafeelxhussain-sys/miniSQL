@@ -6,13 +6,13 @@ using namespace std;
 
 
 class Index{
-    private:
+    public:
     BplusTree tree;
 
     int index_size;
     int pk_size;
     
-    protected:
+    public:
     int search_lower_bound(const void* target_value, datatype dt);
     int search_upper_bound(const void* target_value, datatype dt);
 
@@ -27,9 +27,9 @@ class Index{
     void find_all_pks_forward(const void* target_value, datatype dt,function<void(const char*)> callback);
     void find_all_pks_backward(const void* target_value, datatype dt,function<void(const char*)> callback);
 
-    // void display_tree();
-    // void print_tree_recursive(int pid, int level);
-    // void print_level_order();
+    void display_tree();
+    void print_tree_recursive(int pid, int level);
+    void print_level_order();
 };
 
 

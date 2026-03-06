@@ -261,223 +261,277 @@ void Index::find_all_pks_backward(const void* target_value, datatype dt,function
 
 
 
+/*
+// --- Helper: Extract and Print from Raw Bytes ---
+void print_main_row(const void* data) {
+    int id, age;
+    char name[21]; 
+    memset(name, 0, 21);
 
-// // --- Helper: Extract and Print from Raw Bytes ---
-// void print_main_row(const void* data) {
-//     int id, age;
-//     char name[21]; 
-//     memset(name, 0, 21);
-
-//     memcpy(&id, data, 4);               // Offset 0: ID (PK)
-//     memcpy(&age, (char*)data + 4, 4);   // Offset 4: Age
-//     memcpy(name, (char*)data + 8, 20);  // Offset 8: Name
+    memcpy(&id, data, 4);               // Offset 0: ID (PK)
+    memcpy(&age, (char*)data + 4, 4);   // Offset 4: Age
+    memcpy(name, (char*)data + 8, 20);  // Offset 8: Name
     
-//     cout << "  [Fetched] ID: " << id << " | Age: " << age << " | Name: " << name << endl;
-// }
+    cout << "  [Fetched] ID: " << id << " | Age: " << age << " | Name: " << name << endl;
+}
 
-// #include <queue>
+#include <queue>
 
-// void Index::print_level_order() {
-//     if (tree.tmd.root_page_id == 0) {
-//         cout << "Tree is empty." << endl;
-//         return;
-//     }
+void Index::print_level_order() {
+    if (tree.tmd.root_page_id == 0) {
+        cout << "Tree is empty." << endl;
+        return;
+    }
 
-//     // Queue stores {page_id, depth}
-//     queue<pair<int, int>> q;
-//     q.push({tree.tmd.root_page_id, 0});
+    // Queue stores {page_id, depth}
+    queue<pair<int, int>> q;
+    q.push({tree.tmd.root_page_id, 0});
 
-//     int current_level = -1;
+    int current_level = -1;
 
-//     cout << "\n========== LEVEL ORDER DUMP ==========" << endl;
+    cout << "\n========== LEVEL ORDER DUMP ==========" << endl;
 
-//     while (!q.empty()) {
-//         pair<int, int> front = q.front();
-//         q.pop();
+    while (!q.empty()) {
+        pair<int, int> front = q.front();
+        q.pop();
 
-//         int pid = front.first;
-//         int depth = front.second;
+        int pid = front.first;
+        int depth = front.second;
 
-//         // Print level separator
-//         if (depth > current_level) {
-//             current_level = depth;
-//             cout << "\n--- LEVEL " << current_level << " ---" << endl;
-//         }
+        // Print level separator
+        if (depth > current_level) {
+            current_level = depth;
+            cout << "\n--- LEVEL " << current_level << " ---" << endl;
+        }
 
-//         Page pg;
-//         Header h;
-//         tree.dm.read_page(pid, &pg);
-//         h.load_header(&pg);
+        Page pg;
+        Header h;
+        tree.dm.read_page(pid, &pg);
+        h.load_header(&pg);
 
-//         cout << "[Page " << pid << " | " 
-//              << (h.page_type == LEAFNODE ? "LEAF" : "INTERNAL") 
-//              << " | Keys: " << h.keys_count << "] ";
+        cout << "[Page " << pid << " | " 
+             << (h.page_type == LEAFNODE ? "LEAF" : "INTERNAL") 
+             << " | Keys: " << h.keys_count << "] ";
 
-//         if (h.page_type == INTERNALNODE) {
-//             int internal_entry_size = 4 + index_size + pk_size; // 12 bytes
+        if (h.page_type == INTERNALNODE) {
+            int internal_entry_size = 4 + index_size + pk_size; // 12 bytes
             
-//             // Print all pivots in this internal node
-//             cout << "Pivots: ";
-//             for (int i = 0; i < h.keys_count; i++) {
-//                 int pivot_age, pivot_pk;
-//                 int key_off = sizeof(Header) + (i * internal_entry_size) + 4;
-//                 memcpy(&pivot_age, (char*)&pg + key_off, 4);
-//                 memcpy(&pivot_pk, (char*)&pg + key_off + 4, 4);
-//                 cout << "(" << pivot_age << "," << pivot_pk << ") ";
+            // Print all pivots in this internal node
+            cout << "Pivots: ";
+            for (int i = 0; i < h.keys_count; i++) {
+                int pivot_age, pivot_pk;
+                int key_off = sizeof(Header) + (i * internal_entry_size) + 4;
+                memcpy(&pivot_age, (char*)&pg + key_off, 4);
+                memcpy(&pivot_pk, (char*)&pg + key_off + 4, 4);
+                cout << "(" << pivot_age << "," << pivot_pk << ") ";
 
-//                 // Push children to queue for next level
-//                 int child_pid;
-//                 memcpy(&child_pid, (char*)&pg + (i * internal_entry_size) + sizeof(Header), 4);
-//                 q.push({child_pid, depth + 1});
-//             }
+                // Push children to queue for next level
+                int child_pid;
+                memcpy(&child_pid, (char*)&pg + (i * internal_entry_size) + sizeof(Header), 4);
+                q.push({child_pid, depth + 1});
+            }
             
-//             // Don't forget the rightmost child!
-//             int last_child_pid;
-//             int last_child_off = sizeof(Header) + (h.keys_count * internal_entry_size);
-//             memcpy(&last_child_pid, (char*)&pg + last_child_off, 4);
-//             q.push({last_child_pid, depth + 1});
+            // Don't forget the rightmost child!
+            int last_child_pid;
+            int last_child_off = sizeof(Header) + (h.keys_count * internal_entry_size);
+            memcpy(&last_child_pid, (char*)&pg + last_child_off, 4);
+            q.push({last_child_pid, depth + 1});
             
-//             cout << "| Last Child: " << last_child_pid << endl;
+            cout << "| Last Child: " << last_child_pid << endl;
 
-//         } else {
-//             // It's a leaf, just show first and last keys to keep output clean
-//             int entry_size = index_size + pk_size;
-//             int first_age, last_age;
-//             memcpy(&first_age, (char*)&pg + sizeof(Header), 4);
-//             memcpy(&last_age, (char*)&pg + sizeof(Header) + (h.keys_count - 1) * entry_size, 4);
-//             cout << "Range: [" << first_age << " to " << last_age << "]" << endl;
-//         }
-//     }
-//     cout << "\n======================================" << endl;
-// }
+        } else {
+            // It's a leaf, just show first and last keys to keep output clean
+            int entry_size = index_size + pk_size;
+            int first_age, last_age;
+            memcpy(&first_age, (char*)&pg + sizeof(Header), 4);
+            memcpy(&last_age, (char*)&pg + sizeof(Header) + (h.keys_count - 1) * entry_size, 4);
+            cout << "Range: [" << first_age << " to " << last_age << "]" << endl;
+        }
+    }
+    cout << "\n======================================" << endl;
+}
 
-// void Index::print_tree_recursive(int pid, int level) {
-//     Page pg;
-//     Header h;
-//     tree.dm.read_page(pid, &pg);
-//     h.load_header(&pg);
+void Index::print_tree_recursive(int pid, int level) {
+    Page pg;
+    Header h;
+    tree.dm.read_page(pid, &pg);
+    h.load_header(&pg);
 
-//     // Indentation for tree levels
-//     string indent = "";
-//     for(int i = 0; i < level; i++) indent += "    ";
+    // Indentation for tree levels
+    string indent = "";
+    for(int i = 0; i < level; i++) indent += "    ";
 
-//     cout << indent << "[Page " << pid << "] type: " 
-//          << (h.page_type == LEAFNODE ? "LEAF" : "INTERNAL") 
-//          << " keys: " << h.keys_count << endl;
+    cout << indent << "[Page " << pid << "] type: " 
+         << (h.page_type == LEAFNODE ? "LEAF" : "INTERNAL") 
+         << " keys: " << h.keys_count << endl;
 
-//     int entry_size = index_size + pk_size;
+    int entry_size = index_size + pk_size;
 
-//     if (h.page_type == LEAFNODE) {
-//         for (int i = 0; i < h.keys_count; i++) {
-//             char* row_ptr = (char*)&pg + sizeof(Header) + (i * entry_size);
-//             int age, id;
-//             memcpy(&age, row_ptr, 4);
-//             memcpy(&id, row_ptr + 4, 4);
-//             cout << indent << "  (Age: " << age << ", ID: " << id << ")" << endl;
-//         }
-//     } else {
-//         // Internal Node entry: [ChildPID (4b)] [Key (4b)] [PK (4b)] = 12 bytes
-//         int internal_entry_size = 4 + index_size + pk_size; 
+    if (h.page_type == LEAFNODE) {
+        for (int i = 0; i < h.keys_count; i++) {
+            char* row_ptr = (char*)&pg + sizeof(Header) + (i * entry_size);
+            int age, id;
+            memcpy(&age, row_ptr, 4);
+            memcpy(&id, row_ptr + 4, 4);
+            cout << indent << "  (Age: " << age << ", ID: " << id << ")" << endl;
+        }
+    } else {
+        // Internal Node entry: [ChildPID (4b)] [Key (4b)] [PK (4b)] = 12 bytes
+        int internal_entry_size = 4 + index_size + pk_size; 
         
-//         for (int i = 0; i <= h.keys_count; i++) {
-//             int child_pid;
-//             int child_off = sizeof(Header) + (i * internal_entry_size);
-//             memcpy(&child_pid, (char*)&pg + child_off, 4);
+        for (int i = 0; i <= h.keys_count; i++) {
+            int child_pid;
+            int child_off = sizeof(Header) + (i * internal_entry_size);
+            memcpy(&child_pid, (char*)&pg + child_off, 4);
 
-//             if (child_pid > 0) {
-//                 // If it's not the last child, print the pivot key that follows it
-//                 if (i < h.keys_count) {
-//                     int pivot_age;
-//                     int pk;
-//                     memcpy(&pivot_age, (char*)&pg + child_off + 4, 4);
-//                     memcpy(&pk, (char*)&pg + child_off + 8, 4);
-//                     cout << indent << "  -- Pivot: " << pivot_age << "   pk: " << pk<<" --" << endl;
-//                 }
-//                 print_tree_recursive(child_pid, level + 1);
-//             }
-//         }
-//     }
-// }
+            if (child_pid > 0) {
+                // If it's not the last child, print the pivot key that follows it
+                if (i < h.keys_count) {
+                    int pivot_age;
+                    int pk;
+                    memcpy(&pivot_age, (char*)&pg + child_off + 4, 4);
+                    memcpy(&pk, (char*)&pg + child_off + 8, 4);
+                    cout << indent << "  -- Pivot: " << pivot_age << "   pk: " << pk<<" --" << endl;
+                }
+                print_tree_recursive(child_pid, level + 1);
+            }
+        }
+    }
+}
 
-// // In Index.h / Index.cpp
-// void Index::display_tree() {
-//     cout << "\n******* B+ TREE STRUCTURE DUMP *******" << endl;
-//     if (tree.tmd.root_page_id == 0) {
-//         cout << "Tree is empty." << endl;
-//         return;
-//     }
-//     print_tree_recursive(tree.tmd.root_page_id, 0);
-//     cout << "**************************************\n" << endl;
-// }
+// In Index.h / Index.cpp
+void Index::display_tree() {
+    cout << "\n******* B+ TREE STRUCTURE DUMP *******" << endl;
+    if (tree.tmd.root_page_id == 0) {
+        cout << "Tree is empty." << endl;
+        return;
+    }
+    print_tree_recursive(tree.tmd.root_page_id, 0);
+    cout << "**************************************\n" << endl;
+}
 
-// int main() {
-//     Disk_Manager dm; Table_Metadata tmd;
-//     string s1 = "stress_main";
-//     string s2 = "stress_idx";
-//     dm.create_file(s1);
-//     BplusTree main_tree(dm, tmd, datatype::int32, 4, true);
-//     int rs = 28;
-//     main_tree.create_tree(rs);
+int main() {
+    Disk_Manager dm; Table_Metadata tmd;
+    string s1 = "stress_main";
+    string s2 = "stress_idx";
+    dm.create_file(s1);
+    BplusTree main_tree(dm, tmd, datatype::int32, 4, true);
+    int rs = 28;
+    main_tree.create_tree(rs);
 
-//     Disk_Manager dm2; Table_Metadata tmd2;
-//     dm2.create_file(s2);
-//     Index age_idx(dm2, tmd2, datatype::int32, 4, 4);
-//     age_idx.create_index();
+    Disk_Manager dm2; Table_Metadata tmd2;
+    dm2.create_file(s2);
+    Index age_idx(dm2, tmd2, datatype::int32, 4, 4);
+    age_idx.create_index();
 
-//     cout << "--- Phase 1: Heavy Insertion (500 Rows) ---" << endl;
-//     for (int i = 1; i <= 500; i++) {
-//         int id = i;
-//         int age = 20 + (i % 31); // Ages 20 to 50
-//         char row[28]; memset(row, 0, 28);
-//         memcpy(row, &id, 4);
-//         memcpy(row + 4, &age, 4);
-//         main_tree.insert_row(row, 28, 0);
+    cout << "--- Phase 1: Heavy Insertion (500 Rows) ---" << endl;
+    for (int i = 1; i <= 500; i++) {
+        int id = i;
+        int age = 20 + (i % 31); // Ages 20 to 50
+        char row[28]; memset(row, 0, 28);
+        memcpy(row, &id, 4);
+        memcpy(row + 4, &age, 4);
+        main_tree.insert_row(row, 28, 0);
 
-//         char idx[8];
-//         memcpy(idx, &age, 4);
-//         memcpy(idx + 4, &id, 4);
-//         age_idx.insert_index(idx);
-//     }
+        char idx[8];
+        memcpy(idx, &age, 4);
+        memcpy(idx + 4, &id, 4);
+        age_idx.insert_index(idx);
+    }
 
-//     // age_idx.print_level_order();
+    // age_idx.print_level_order();
 
-//     cout << "--- Phase 2: Range Verification (Age 30) ---" << endl;
-//     int target = 32;
+    cout << "--- Phase 2: Range Verification (Age 30) ---" << endl;
+    int target = 32;
 
-//     int count1 = 0;
-//     int count2 = 0;
-//     int count3 = 0;
-//     age_idx.find_all_pks(&target, datatype::int32, [&](const void* pk) {
-//         count1++;
-//     });
-//     cout << "Found " << count1 << " records for Age = 32." << endl;
-//     age_idx.find_all_pks_forward(&target, datatype::int32, [&](const void* pk) {
-//         count2++;
-//     });
-//     cout << "Found " << count2 << " records for Age >= 32." << endl;
-//     age_idx.find_all_pks_backward(&target, datatype::int32, [&](const void* pk) {
-//         count3++;
-//     });
-//     cout << "Found " << count3 << " records for Age <= 32." << endl;
+    int count1 = 0;
+    int count2 = 0;
+    int count3 = 0;
+    age_idx.find_all_pks(&target, datatype::int32, [&](const void* pk) {
+        count1++;
+    });
+    cout << "Found " << count1 << " records for Age = 32." << endl;
+    age_idx.find_all_pks_forward(&target, datatype::int32, [&](const void* pk) {
+        count2++;
+    });
+    cout << "Found " << count2 << " records for Age >= 32." << endl;
+    age_idx.find_all_pks_backward(&target, datatype::int32, [&](const void* pk) {
+        count3++;
+    });
+    cout << "Found " << count3 << " records for Age <= 32." << endl;
 
-//     cout << "--- Phase 3: Bulk Deletion (All Even IDs) ---" << endl;
-//     for (int i = 2; i <= 500; i += 2) {
-//         int id = i;
-//         int age = 20 + (i % 31);
-//         char idx[8];
-//         memcpy(idx, &age, 4);
-//         memcpy(idx + 4, &id, 4);
+    cout << "--- Phase 3: Bulk Deletion (All Even IDs) ---" << endl;
+    for (int i = 2; i <= 500; i += 2) {
+        int id = i;
+        int age = 20 + (i % 31);
+        char idx[8];
+        memcpy(idx, &age, 4);
+        memcpy(idx + 4, &id, 4);
         
-//         age_idx.delete_index(idx); // Test tie-breaker deletion
-//     }
+        age_idx.delete_index(idx); // Test tie-breaker deletion
+    }
 
-//     age_idx.print_level_order();
+    age_idx.print_level_order();
 
-//     cout << "--- Phase 4: Upper/Lower Bound Consistency ---" << endl;
-//     int test_age = 44;
-//     int lb_page = age_idx.search_lower_bound(&test_age, datatype::int32);
-//     int ub_page = age_idx.search_upper_bound(&test_age, datatype::int32);
-//     cout << "Lower Bound Page: " << lb_page << " | Upper Bound Page: " << ub_page << endl;
+    cout << "--- Phase 4: Upper/Lower Bound Consistency ---" << endl;
+    int test_age = 44;
+    int lb_page = age_idx.search_lower_bound(&test_age, datatype::int32);
+    int ub_page = age_idx.search_upper_bound(&test_age, datatype::int32);
+    cout << "Lower Bound Page: " << lb_page << " | Upper Bound Page: " << ub_page << endl;
 
-//     return 0;
-// }
+    cout << "--- Phase 5: Update Test (Age Modification) ---" << endl;
+
+    for (int i = 1; i <= 100; i++) {
+        int id = i;
+
+        int old_age = 20 + (i % 31);
+        int new_age = old_age + 10;
+
+        // update MAIN TABLE
+        char new_val[4];
+        memcpy(new_val, &new_age, 4);
+
+        main_tree.update_row(&id, rs, 0, 4, 4, new_val);
+
+        // update INDEX
+        char old_idx[8];
+        memcpy(old_idx, &old_age, 4);
+        memcpy(old_idx + 4, &id, 4);
+
+        char new_idx[8];
+        memcpy(new_idx, &new_age, 4);
+        memcpy(new_idx + 4, &id, 4);
+
+        age_idx.update_index(old_idx, new_idx);
+    }
+
+    cout << "Updates complete." << endl;
+    cout << "--- Phase 6: Update Verification ---" << endl;
+
+    int updated_age = 42;  // choose a value that should exist after update
+    int updated_count = 0;
+
+    age_idx.find_all_pks(&updated_age, datatype::int32, [&](const void* pk) {
+        updated_count++;
+    });
+
+    cout << "Rows with Age = " << updated_age << " : " << updated_count << endl;
+
+    cout << "--- Phase 7: Direct Row Check ---" << endl;
+
+    int x = 10;
+    char id_check[4];
+    memcpy(id_check, &x , 4);
+
+    main_tree.scan_point(rs, id_check, 0, [&](const char* row) {
+        int id;
+        int age;
+
+        memcpy(&id, row, 4);
+        memcpy(&age, row + 4, 4);
+
+        cout << "Row -> ID: " << id << " Age: " << age << endl;
+    });
+    return 0;
+}
+*/

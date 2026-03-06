@@ -173,7 +173,9 @@ void DataHandler::converter(char* ptr, string value, datatype dt, int size){
         memcpy(ptr, &x, sizeof(int));
     }
     else if(dt == bool8){
-        uint8_t x = stoi(value);
+        uint8_t x = 0;
+        if(to_upper(value)=="TRUE")
+        x = 1;
         memcpy(ptr, &x, sizeof(uint8_t));
     }
     else{

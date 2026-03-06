@@ -83,7 +83,6 @@ void Disk_Manager :: write_page(int page_id,const void *buffer){
     int page_offset = page_id * PAGE_SIZE;
     file.seekp(page_offset);
     file.write((char*)buffer, PAGE_SIZE);
-    file.flush();
 }
 
 int Disk_Manager :: allocate_page(Table_Metadata &tmd){

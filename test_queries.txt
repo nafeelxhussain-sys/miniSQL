@@ -12,7 +12,7 @@ CREATE TABLE users33 (
 CREATE TABLE users (
     id INT key,
     name TEXT(14) index,
-    age INT ,
+    age INT index , 
     active bool 
 );
 

@@ -19,6 +19,10 @@ void select_operation::print(ConditionNode* root) {
     print(root->right);
 }
 
+query_processor::~query_processor(){
+    delete[] tokens;
+}
+
 
 // ------------------- query_processor -------------------
 void query_processor::print() {

@@ -4,7 +4,7 @@
 #include "DiskManager.h"
 #include "utils.h"
 using namespace std;
-#define PAGE_SIZE 128
+#define PAGE_SIZE 4096
 
 
 
