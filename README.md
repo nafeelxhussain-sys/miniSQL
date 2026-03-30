@@ -138,7 +138,7 @@ miniSQL/
 │   ├── indexing.md
 │   ├── query_optimizer.md
 │   └── demo.gif
-├── data/                         # Sample database files
+├── data/                         # database files
 ├── CMakeLists.txt
 └── README.md
 

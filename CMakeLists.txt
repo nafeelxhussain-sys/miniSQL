@@ -19,7 +19,7 @@ else()
 endif()
 
 # ========================== Source Files ==========================
-# Automatically find all .cpp files recursively (Recommended for your structure)
+# Automatically find all .cpp files recursively 
 file(GLOB_RECURSE SOURCES 
     "src/*.cpp"
 )
