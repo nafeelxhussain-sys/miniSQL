@@ -130,7 +130,6 @@ miniSQL/
 │   └── utility/                  # (*.h + *.cpp)
 ├── test/
 │   ├── queries/                  # All test SQL files
-│   ├── run_tests.py              # Cross-platform test runner
 │   └── README.md
 ├── docs/                         # Architecture and design documents
 │   ├── architecture.md
@@ -138,7 +137,6 @@ miniSQL/
 │   ├── indexing.md
 │   ├── query_optimizer.md
 │   └── demo.gif
-├── data/                         # database files
 ├── dockerfile
 ├── docker-compose.yml
 ├── run.bat

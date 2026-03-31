@@ -35,6 +35,6 @@ int main(){
         auto end = std::chrono::high_resolution_clock::now();     // end timer
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(end - start);
 
-        cout << "\nQuery completed in " << duration.count()<< " ms" << endl<<endl;
+        cout << "\nQuery completed in " << duration.count()<< " ms" << endl<<endl<<endl;
     }
 }
