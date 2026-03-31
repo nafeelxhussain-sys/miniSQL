@@ -1,5 +1,7 @@
 #include<iostream>
 #include<cstring>
+#include<vector>
+#include<iomanip>
 #include"DataHandling.h"
 #include"error.h"
 #include"schema.h"
@@ -98,37 +100,64 @@ DB_error DataHandler::data_verify(schema& s, string* data, int size_of_data) {
     return DB_error(ERR_NONE,"");
 }
 
-void DataHandler::print_row(schema& s, const char* row) {
-    for(int c = 0; c<s.num_of_cols ; c++){
-        datatype dt = s.getColumnType(c);
-        int col_size = s.getColumnSize(c);
-        const char* start = row + s.col_offset[c];
-
-        if(dt==int32){
-            int value;
-            memcpy(&value, start, sizeof(int));
-
-            cout<<value<<" ";
-        }
-        else if(dt == text){
-            string value(start, col_size);
-            size_t end = value.find('\0');
-            if (end != string::npos)
-                value = value.substr(0, end);
-
-            cout<<value<<" ";
-
-        }
-        else if(dt == bool8){
-            uint8_t value;
-            memcpy(&value, start, sizeof(uint8_t));
-            string truth = (value==1) ? "True" : "False";
-
-            cout<<truth<<" ";
-        }
+vector<int> DataHandler::get_col_widths(schema& s) {
+    std::vector<int> widths;
+    for (int i = 0; i < s.num_of_cols; i++) {
+        int col_name_len = s.column_name[i].length();
+        datatype dt = s.getColumnType(i);
+        
+        int data_len = (dt == int32) ? 11 : (dt == bool8 ? 5 : s.getColumnSize(i));
+        
+        widths.push_back(max(col_name_len, data_len));
     }
+    return widths;
+}
+void DataHandler::print_table_border(const std::vector<int>& widths) {
+    cout << "+";
+    for (int w : widths) {
+        cout << string(w + 2, '-') << "+"; // +2 for internal padding
+    }
+    cout << endl;
+}
 
-    cout<<endl;
+void DataHandler::print_header(schema& s, const std::vector<int>& widths) {
+    print_table_border(widths);
+    cout << "| ";
+    for (int i = 0; i < s.num_of_cols; i++) {
+        
+        cout << left << setw(widths[i]) << s.column_name[i] << " | ";
+    }
+    cout << endl;
+    print_table_border(widths);
+}
+
+void DataHandler::print_row(schema& s, const char* row, const vector<int>& widths) {
+    cout << "| ";
+    for (int c = 0; c < s.num_of_cols; c++) {
+        datatype dt = s.getColumnType(c);
+        const char* start = row + s.col_offset[c];
+        int w = widths[c];
+
+        if (dt == int32) {
+            int32_t val;
+            memcpy(&val, start, 4);
+            cout << right << setw(w) << val;
+        } 
+        else if (dt == text) {
+            std::string val(start, s.getColumnSize(c));
+            size_t end = val.find('\0');
+            if (end != string::npos) val = val.substr(0, end);
+            cout << left << setw(w) << val;
+        } 
+        else if (dt == bool8) {
+            uint8_t val;
+            memcpy(&val, start, 1);
+            std::string truth = (val == 1) ? "True" : "False";
+            cout << left << setw(w) << truth;
+        }
+        cout << " | ";
+    }
+    cout << endl;
 }
 
 void DataHandler::converter(schema& s, string *data, char* row){

@@ -32,12 +32,12 @@ void schema::free_arrays() {
 }
 
 DB_error schema::load_schema(string db_name, string table_name) {
-    string file_name = "..\\data\\" + db_name + '_' + table_name + ".schema";
+    string file_name = "../data/" + db_name + '_' + table_name + ".schema";
     ifstream in(file_name, ios::binary);
     unsigned char buffer[512] = {'\0'};
 
     if (!in.is_open()) {
-        return DB_error(ERR_RUNTIME,"table " + table_name + " does not exists " );
+        return DB_error(ERR_RUNTIME,"table " + table_name + "does not exists " );
     }
 
     in.seekg(0, ios::end);
@@ -102,7 +102,7 @@ DB_error schema::load_schema(string db_name, string table_name) {
 }
 
 DB_error schema::create_schema_file(string db_name, string table_name, uint8_t num_of_cols, string* name, int* size, datatype* type,int* col_index, uint8_t clustered) {
-    string file_name = "..\\data\\" + db_name + '_' + table_name + ".schema";
+    string file_name = "../data/" + db_name + '_' + table_name + ".schema";
     ofstream out(file_name, ios::binary | ios::trunc);
     unsigned char buffer[512] = {'\0'};
 

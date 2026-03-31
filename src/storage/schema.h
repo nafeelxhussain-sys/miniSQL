@@ -1,5 +1,6 @@
 #pragma once
 #include<iostream>
+#include <cstdint>
 #include"error.h"
 #include"utils.h"
 using namespace std;

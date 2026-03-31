@@ -1,7 +1,8 @@
 #include <cstdio>
+#include <vector>
 #include "executor.h"
 #include "QueryOptimiser.h"
-#include "BplusTree.h"
+#include "BPlusTree.h"
 #include "Index.h"
 #include "DiskManager.h"
 #include "DataHandling.h"
@@ -300,11 +301,11 @@ void executor::execute_create_cluster(create_operation &o){
 }
 
 void executor::execute_insert_cluster(insert_operation &o){
-    string file_name = "..\\data\\main_"  + o.table_name + ".tbl";
+    string file_name = "../data/main_" + o.table_name + ".tbl";
 
     // handle catalog
     catalog cat;
-    if (!cat.db_exists("..\\data\\main.catalog")) {
+    if (!cat.db_exists("../data/main.catalog")) {
         o.error = DB_error(ERR_UNKNOWN_TABLE, "catalog not found: ");
         cout<<o.error.message<<endl;
         return;
@@ -409,11 +410,11 @@ void executor::execute_insert_cluster(insert_operation &o){
 }
 
 void executor::execute_select_pklookup(select_operation &o, AccessPath &acc){
-    string file_name = "..\\data\\main_"  + o.table_name + ".tbl";
+    string file_name = "../data/main_"  + o.table_name + ".tbl";
 
     // handle catalog
     catalog cat;
-    if (!cat.db_exists("..\\data\\main.catalog")) {
+    if (!cat.db_exists("../data/main.catalog")) {
         o.error = DB_error(ERR_UNKNOWN_TABLE, "catalog not found: ");
         cout<<o.error.message<<endl;
         return;
@@ -453,11 +454,18 @@ void executor::execute_select_pklookup(select_operation &o, AccessPath &acc){
     int key_off = s.getPkOffset();
     char search_key[sizeof(int)];
     dh.converter(search_key, acc.search_value, int32, sizeof(int));
+    auto width = dh.get_col_widths(s);
+    bool first = true;
 
     try{
     tree.scan_point(row_size,search_key, key_off,[&](const char* ptr){
         if(wh.evaluvate_tree(o.root, s, (const unsigned char*)ptr)){
-        dh.print_row(s,ptr);
+        if(first){
+            first = false;
+            dh.print_header(s,width);
+        }
+        
+        dh.print_row(s,ptr,width);
         found = true;
         }
     });}
@@ -469,14 +477,17 @@ void executor::execute_select_pklookup(select_operation &o, AccessPath &acc){
     if(!found){
         cout<<"No matches found: "<<endl;
     }
+    else{
+        dh.print_table_border(width);
+    }
 }
 
 void executor::execute_select_sklookup(select_operation &o, AccessPath &acc){
-    string file_name = "..\\data\\main_"  + o.table_name + ".tbl";
+    string file_name = "../data/main_"  + o.table_name + ".tbl";
 
     // handle catalog
     catalog cat;
-    if (!cat.db_exists("..\\data\\main.catalog")) {
+    if (!cat.db_exists("../data/main.catalog")) {
         o.error = DB_error(ERR_UNKNOWN_TABLE, "catalog not found: ");
         cout<<o.error.message<<endl;
         return;
@@ -531,12 +542,18 @@ void executor::execute_select_sklookup(select_operation &o, AccessPath &acc){
     int key_off = s.getPkOffset();
     char search_key[index_row_size];
     dh.converter(search_key, acc.search_value, dt, index_row_size);
+    auto width = dh.get_col_widths(s);
+    bool first = true;
 
     try{
     tree_index.find_all_pks(search_key,dt,[&](const char* ptr_to_index){
         tree.scan_point(primary_row_size, ptr_to_index,key_off, [&](const char* ptr_to_prim){
             if(wh.evaluvate_tree(o.root, s, (const unsigned char*)ptr_to_prim)){
-            dh.print_row(s,ptr_to_prim);
+            if(first){
+                first = false;
+                dh.print_header(s,width);
+            }
+            dh.print_row(s,ptr_to_prim,width);
             found = true;
         }});
     });}
@@ -548,14 +565,17 @@ void executor::execute_select_sklookup(select_operation &o, AccessPath &acc){
     if(!found){
         cout<<"No matches found: "<<endl;
     }
+    else{
+        dh.print_table_border(width);
+    }
 }
 
 void executor::execute_select_pkrange(select_operation &o, AccessPath &acc){
-    string file_name = "..\\data\\main_"  + o.table_name + ".tbl";
+    string file_name = "../data/main_"  + o.table_name + ".tbl";
 
     // handle catalog
     catalog cat;
-    if (!cat.db_exists("..\\data\\main.catalog")) {
+    if (!cat.db_exists("../data/main.catalog")) {
         o.error = DB_error(ERR_UNKNOWN_TABLE, "catalog not found: ");
         cout<<o.error.message<<endl;
         return;
@@ -595,19 +615,29 @@ void executor::execute_select_pkrange(select_operation &o, AccessPath &acc){
     int key_off = s.getPkOffset();
     char search_key[sizeof(int)];
     dh.converter(search_key, acc.search_value, int32, sizeof(int));
+    auto width = dh.get_col_widths(s);
+    bool first = true;
 
     try{
     if(acc.forward){
         tree.scan_forward(row_size,search_key, key_off,[&](const char* ptr){
         if(wh.evaluvate_tree(o.root, s, (const unsigned char*)ptr)){
-            dh.print_row(s,ptr);
+            if(first){
+                first = false;
+                dh.print_header(s,width);
+            }
+            dh.print_row(s,ptr,width);
             found = true;
         }});
     }
     else{
         tree.scan_backward(row_size,search_key, key_off,[&](const char* ptr){
         if(wh.evaluvate_tree(o.root, s, (const unsigned char*)ptr)){
-            dh.print_row(s,ptr);
+            if(first){
+                first = false;
+                dh.print_header(s,width);
+            }
+            dh.print_row(s,ptr,width);
             found = true;
         }});
     }}
@@ -619,14 +649,17 @@ void executor::execute_select_pkrange(select_operation &o, AccessPath &acc){
     if(!found){
         cout<<"No matches found: "<<endl;
     }
+    else{
+        dh.print_table_border(width);
+    }
 }
 
 void executor::execute_select_skrange(select_operation &o, AccessPath &acc){
-    string file_name = "..\\data\\main_"  + o.table_name + ".tbl";
+    string file_name = "../data/main_"  + o.table_name + ".tbl";
 
     // handle catalog
     catalog cat;
-    if (!cat.db_exists("..\\data\\main.catalog")) {
+    if (!cat.db_exists("../data/main.catalog")) {
         o.error = DB_error(ERR_UNKNOWN_TABLE, "catalog not found: ");
         cout<<o.error.message<<endl;
         return;
@@ -681,13 +714,19 @@ void executor::execute_select_skrange(select_operation &o, AccessPath &acc){
     int key_off = s.getPkOffset();
     char search_key[index_row_size];
     dh.converter(search_key, acc.search_value, dt, index_row_size);
+    auto width = dh.get_col_widths(s);
+    bool first = true;
 
     try{
     if(acc.forward){
         tree_index.find_all_pks_forward(search_key,dt,[&](const char* ptr_to_index){
             tree.scan_point(primary_row_size, ptr_to_index,key_off, [&](const char* ptr_to_prim){
                 if(wh.evaluvate_tree(o.root, s, (const unsigned char*)ptr_to_prim)){
-                    dh.print_row(s,ptr_to_prim);
+                    if(first){
+                        first = false;
+                        dh.print_header(s,width);
+                    }
+                    dh.print_row(s,ptr_to_prim,width);
                     found = true;
                 }
             });
@@ -697,7 +736,11 @@ void executor::execute_select_skrange(select_operation &o, AccessPath &acc){
         tree_index.find_all_pks_backward(search_key,dt,[&](const char* ptr_to_index){
             tree.scan_point(primary_row_size, ptr_to_index,key_off, [&](const char* ptr_to_prim){
                 if(wh.evaluvate_tree(o.root, s, (const unsigned char*)ptr_to_prim)){
-                dh.print_row(s,ptr_to_prim);
+                if(first){
+                    first = false;
+                    dh.print_header(s,width);
+                }
+                dh.print_row(s,ptr_to_prim,width);
                 found = true;
                 }
             });
@@ -711,14 +754,17 @@ void executor::execute_select_skrange(select_operation &o, AccessPath &acc){
     if(!found){
         cout<<"No matches found: "<<endl;
     }
+    else{
+        dh.print_table_border(width);
+    }
 }
 
 void executor::execute_select_fullscan(select_operation &o, AccessPath &acc){
-    string file_name = "..\\data\\main_"  + o.table_name + ".tbl";
+    string file_name = "../data/main_"  + o.table_name + ".tbl";
 
     // handle catalog
     catalog cat;
-    if (!cat.db_exists("..\\data\\main.catalog")) {
+    if (!cat.db_exists("../data/main.catalog")) {
         o.error = DB_error(ERR_UNKNOWN_TABLE, "catalog not found: ");
         cout<<o.error.message<<endl;
         return;
@@ -755,11 +801,17 @@ void executor::execute_select_fullscan(select_operation &o, AccessPath &acc){
     where_clause wh;
     bool found = false;
     int row_size = s.row_size;
+    auto width = dh.get_col_widths(s);
+    bool first = true;
 
     try{
     tree.scan_all(row_size,[&](const char* ptr){
     if(wh.evaluvate_tree(o.root, s, (const unsigned char*)ptr)){
-        dh.print_row(s,ptr);
+        if(first){
+            first = false;
+            dh.print_header(s,width);
+        }
+        dh.print_row(s,ptr,width);
         found = true;
     }});
     }
@@ -772,14 +824,17 @@ void executor::execute_select_fullscan(select_operation &o, AccessPath &acc){
     if(!found){
         cout<<"No matches found: "<<endl;
     }
+    else{
+        dh.print_table_border(width);
+    }
 }
 
 void executor::execute_update_pklookup(update_operation &o, AccessPath &acc){
-    string file_name = "..\\data\\main_"  + o.table_name + ".tbl";
+    string file_name = "../data/main_"  + o.table_name + ".tbl";
 
     // handle catalog
     catalog cat;
-    if (!cat.db_exists("..\\data\\main.catalog")) {
+    if (!cat.db_exists("../data/main.catalog")) {
         o.error = DB_error(ERR_UNKNOWN_TABLE, "catalog not found: ");
         cout<<o.error.message<<endl;
         return;
@@ -906,11 +961,11 @@ void executor::execute_update_pklookup(update_operation &o, AccessPath &acc){
 }
 
 void executor::execute_update_sklookup(update_operation &o, AccessPath &acc){
-    string file_name = "..\\data\\main_"  + o.table_name + ".tbl";
+    string file_name = "../data/main_"  + o.table_name + ".tbl";
 
     // handle catalog
     catalog cat;
-    if (!cat.db_exists("..\\data\\main.catalog")) {
+    if (!cat.db_exists("../data/main.catalog")) {
         o.error = DB_error(ERR_UNKNOWN_TABLE, "catalog not found: ");
         cout<<o.error.message<<endl;
         return;
@@ -1066,11 +1121,11 @@ void executor::execute_update_sklookup(update_operation &o, AccessPath &acc){
 }
 
 void executor::execute_update_pkrange(update_operation &o, AccessPath &acc){
-    string file_name = "..\\data\\main_"  + o.table_name + ".tbl";
+    string file_name = "../data/main_"  + o.table_name + ".tbl";
 
     // handle catalog
     catalog cat;
-    if (!cat.db_exists("..\\data\\main.catalog")) {
+    if (!cat.db_exists("../data/main.catalog")) {
         o.error = DB_error(ERR_UNKNOWN_TABLE, "catalog not found: ");
         cout<<o.error.message<<endl;
         return;
@@ -1241,11 +1296,11 @@ void executor::execute_update_pkrange(update_operation &o, AccessPath &acc){
 }
 
 void executor::execute_update_skrange(update_operation &o, AccessPath &acc){
-    string file_name = "..\\data\\main_"  + o.table_name + ".tbl";
+    string file_name = "../data/main_"  + o.table_name + ".tbl";
 
     // handle catalog
     catalog cat;
-    if (!cat.db_exists("..\\data\\main.catalog")) {
+    if (!cat.db_exists("../data/main.catalog")) {
         o.error = DB_error(ERR_UNKNOWN_TABLE, "catalog not found: ");
         cout<<o.error.message<<endl;
         return;
@@ -1408,11 +1463,11 @@ void executor::execute_update_skrange(update_operation &o, AccessPath &acc){
 }
 
 void executor::execute_update_fullscan(update_operation &o, AccessPath &acc){
-    string file_name = "..\\data\\main_"  + o.table_name + ".tbl";
+    string file_name = "../data/main_"  + o.table_name + ".tbl";
 
     // handle catalog
     catalog cat;
-    if (!cat.db_exists("..\\data\\main.catalog")) {
+    if (!cat.db_exists("../data/main.catalog")) {
         o.error = DB_error(ERR_UNKNOWN_TABLE, "catalog not found: ");
         cout<<o.error.message<<endl;
         return;
@@ -1541,11 +1596,11 @@ void executor::execute_update_fullscan(update_operation &o, AccessPath &acc){
 }
 
 void executor::execute_delete_pklookup(delete_operation &o, AccessPath &acc){
-    string file_name = "..\\data\\main_"  + o.table_name + ".tbl";
+    string file_name = "../data/main_"  + o.table_name + ".tbl";
 
     // handle catalog
     catalog cat;
-    if (!cat.db_exists("..\\data\\main.catalog")) {
+    if (!cat.db_exists("../data/main.catalog")) {
         o.error = DB_error(ERR_UNKNOWN_TABLE, "catalog not found: ");
         cout<<o.error.message<<endl;
         return;
@@ -1650,11 +1705,11 @@ void executor::execute_delete_pklookup(delete_operation &o, AccessPath &acc){
 }
 
 void executor::execute_delete_sklookup(delete_operation &o, AccessPath &acc){
-    string file_name = "..\\data\\main_"  + o.table_name + ".tbl";
+    string file_name = "../data/main_"  + o.table_name + ".tbl";
 
     // handle catalog
     catalog cat;
-    if (!cat.db_exists("..\\data\\main.catalog")) {
+    if (!cat.db_exists("../data/main.catalog")) {
         o.error = DB_error(ERR_UNKNOWN_TABLE, "catalog not found: ");
         cout<<o.error.message<<endl;
         return;
@@ -1779,11 +1834,11 @@ void executor::execute_delete_sklookup(delete_operation &o, AccessPath &acc){
 }
 
 void executor::execute_delete_pkrange(delete_operation &o, AccessPath &acc){
-    string file_name = "..\\data\\main_"  + o.table_name + ".tbl";
+    string file_name = "../data/main_"  + o.table_name + ".tbl";
 
     // handle catalog
     catalog cat;
-    if (!cat.db_exists("..\\data\\main.catalog")) {
+    if (!cat.db_exists("../data/main.catalog")) {
         o.error = DB_error(ERR_UNKNOWN_TABLE, "catalog not found: ");
         cout<<o.error.message<<endl;
         return;
@@ -1920,11 +1975,11 @@ void executor::execute_delete_pkrange(delete_operation &o, AccessPath &acc){
 }
 
 void executor::execute_delete_skrange(delete_operation &o, AccessPath &acc){
-    string file_name = "..\\data\\main_"  + o.table_name + ".tbl";
+    string file_name = "../data/main_"  + o.table_name + ".tbl";
 
     // handle catalog
     catalog cat;
-    if (!cat.db_exists("..\\data\\main.catalog")) {
+    if (!cat.db_exists("../data/main.catalog")) {
         o.error = DB_error(ERR_UNKNOWN_TABLE, "catalog not found: ");
         cout<<o.error.message<<endl;
         return;
@@ -2077,11 +2132,11 @@ void executor::execute_delete_skrange(delete_operation &o, AccessPath &acc){
 }
 
 void executor::execute_delete_fullscan(delete_operation &o, AccessPath &acc){
-    string file_name = "..\\data\\main_"  + o.table_name + ".tbl";
+    string file_name = "../data/main_"  + o.table_name + ".tbl";
 
     // handle catalog
     catalog cat;
-    if (!cat.db_exists("..\\data\\main.catalog")) {
+    if (!cat.db_exists("../data/main.catalog")) {
         o.error = DB_error(ERR_UNKNOWN_TABLE, "catalog not found: ");
         cout<<o.error.message<<endl;
         return;
@@ -2189,7 +2244,7 @@ void executor::execute_delete_fullscan(delete_operation &o, AccessPath &acc){
 }
 
 void executor::execute_drop_cluster(select_operation &o, AccessPath &acc){
-    string file_name = "..\\data\\main_"  + o.table_name + ".tbl";
+    string file_name = "../data/main_"  + o.table_name + ".tbl";
 
     if (!o.error.ok()) {
         cout << o.error.message << endl;
@@ -2198,7 +2253,7 @@ void executor::execute_drop_cluster(select_operation &o, AccessPath &acc){
 
     // handle catalog
     catalog cat;
-    if (!cat.db_exists("..\\data\\main.catalog")) {
+    if (!cat.db_exists("../data/main.catalog")) {
         o.error = DB_error(ERR_UNKNOWN_TABLE, "catalog not found: ");
         cout<<o.error.message<<endl;
         return;
@@ -2227,16 +2282,16 @@ void executor::execute_drop_cluster(select_operation &o, AccessPath &acc){
     //remove index files
     for(int i = 0 ; i < s.num_of_cols ; i++){
         if(s.getColumnIndexType(i)==2){
-            string file = "..\\data\\main_" + o.table_name + "_" + s.column_name[i] + ".tbl";
+            string file = "../data/main_" + o.table_name + "_" + s.column_name[i] + ".tbl";
             ::remove(file.c_str());
     }}
 
     //delete main file
-    string file = "..\\data\\main_" + o.table_name  + ".tbl";
+    string file = "../data/main_" + o.table_name  + ".tbl";
     ::remove(file.c_str());
 
     //delete scheman file
-    file = "..\\data\\main_" + o.table_name  + ".schema";
+    file = "../data/main_" + o.table_name  + ".schema";
     ::remove(file.c_str());
 
     cout<<"table deleted : " + o.table_name<<endl;

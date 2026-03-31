@@ -31,7 +31,7 @@ bool catalog::db_exists(string path) {
 }
 
 void catalog::save_catalog(string db_name) {
-    string file_name = "..\\data\\" + db_name + ".catalog";
+    string file_name = "../data/" + db_name + ".catalog";
     this->db_name = db_name;
 
     if (db_exists(file_name)) {
@@ -45,7 +45,7 @@ void catalog::save_catalog(string db_name) {
 }
 
 DB_error catalog::load_catalog(string db_name) {
-    string file_name = "..\\data\\" + db_name + ".catalog";
+    string file_name = "../data/" + db_name + ".catalog";
 
     if (!db_exists(file_name)) {
         return DB_error(ERR_NONE, "catalog does not exists ");
@@ -87,7 +87,7 @@ DB_error catalog::load_catalog(string db_name) {
 }
 
 DB_error catalog::add_table(string table_name, uint16_t coulumn_count, uint8_t is_clustered) {
-    string file_name = "..\\data\\" + this->db_name + ".catalog";
+    string file_name = "../data/" + this->db_name + ".catalog";
 
     DB_error err(ERR_NONE, "");
 
@@ -152,7 +152,7 @@ void catalog::print_catalog(string db_name) {
 }
 
 DB_error catalog::remove_table(string table_name,string db_name_){
-    string file_name = "..\\data\\" + db_name_ + ".catalog";
+    string file_name = "../data/" + db_name_ + ".catalog";
 
     if (!db_exists(file_name)) {
         return DB_error(ERR_NONE, "catalog does not exists ");
@@ -243,7 +243,7 @@ database::database(string name) {
 }
 
 bool database::table_exists(string tb_name) {
-    string file_name = "..\\data\\" + this->db_name + '_' + tb_name + ".tbl";
+    string file_name = "../data/" + this->db_name + '_' + tb_name + ".tbl";
     ifstream f(file_name);
     bool exists = f.is_open();
     f.close();
@@ -251,7 +251,7 @@ bool database::table_exists(string tb_name) {
 }
 
 bool database::schema_exists(string tb_name) {
-    string file_name = "..\\data\\" + this->db_name + '_' + tb_name + ".schema";
+    string file_name = "../data/" + this->db_name + '_' + tb_name + ".schema";
     ifstream f(file_name);
     bool exists = f.is_open();
     f.close();
@@ -259,7 +259,7 @@ bool database::schema_exists(string tb_name) {
 }
 
 DB_error database::create_table(string table_name, int num_of_cols, string* name, int* size, datatype* type, int *col_index) {
-    string file_name = "..\\data\\" + this->db_name + '_' + table_name + ".tbl";
+    string file_name = "../data/" + this->db_name + '_' + table_name + ".tbl";
 
     DB_error err(ERR_NONE,"");
     if (table_exists(table_name)) {
@@ -295,7 +295,7 @@ DB_error database::create_table(string table_name, int num_of_cols, string* name
 }
 
 DB_error database::insert_into_table(string table_name, string* data, int size_of_data) {
-    string file_name = "..\\data\\" + this->db_name + '_' + table_name + ".tbl";
+    string file_name = "../data/" + this->db_name + '_' + table_name + ".tbl";
 
     DB_error err(ERR_NONE,"");
 
@@ -330,7 +330,7 @@ DB_error database::insert_into_table(string table_name, string* data, int size_o
 }
 
 DB_error database::select_from_table(string table_name, ConditionNode* root, bool where) {
-    string file_name = "..\\data\\" + this->db_name + '_' + table_name + ".tbl";
+    string file_name = "../data/" + this->db_name + '_' + table_name + ".tbl";
 
     DB_error err(ERR_NONE,"");
 
@@ -357,7 +357,7 @@ DB_error database::select_from_table(string table_name, ConditionNode* root, boo
 }
 
 DB_error database :: delete_from_table(string table_name, ConditionNode* root, bool where){
-    string file_name = "..\\data\\" + this->db_name + '_' + table_name + ".tbl";
+    string file_name = "../data/" + this->db_name + '_' + table_name + ".tbl";
 
     DB_error err(ERR_NONE,"");
 
@@ -392,7 +392,7 @@ DB_error database :: delete_from_table(string table_name, ConditionNode* root, b
 }
 
 DB_error database::update_table(string table_name, ConditionNode* root, bool where,SetClause &sc){
-    string file_name = "..\\data\\" + this->db_name + '_' + table_name + ".tbl";
+    string file_name = "../data/" + this->db_name + '_' + table_name + ".tbl";
 
     DB_error err(ERR_NONE,"");
 
@@ -425,8 +425,8 @@ DB_error database::update_table(string table_name, ConditionNode* root, bool whe
 }
 
 DB_error database::drop_table(string table_name){
-    string file_name = "..\\data\\" + this->db_name + '_' + table_name + ".tbl";
-    string schema_name = "..\\data\\" + this->db_name + '_' + table_name + ".schema";
+    string file_name = "../data/" + this->db_name + '_' + table_name + ".tbl";
+    string schema_name = "../data/" + this->db_name + '_' + table_name + ".schema";
     DB_error err;
 
     if(remove(file_name.c_str())==0){

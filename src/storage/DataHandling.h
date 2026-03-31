@@ -8,8 +8,11 @@ class DataHandler{
     public:
     DB_error set_verify(schema &s, SetClause &sc);
     DB_error data_verify(schema& s, string* data, int size_of_data) ;
-    void print_row(schema& s, const char* row) ;
     void converter(schema& s, string *data, char* row) ;
     void converter(char* index_row, char* index_ptr, char* key_ptr, int index_size, int key_size) ;
     void converter(char* ptr , string value, datatype dt, int size) ;
+    vector<int> get_col_widths(schema& s);
+    void print_table_border(const vector<int>& widths);
+    void print_header(schema& s, const vector<int>& widths);
+    void print_row(schema& s, const char* row, const vector<int>& widths);
 };

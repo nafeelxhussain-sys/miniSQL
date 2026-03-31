@@ -107,6 +107,10 @@ operation query_processor::command_router() {
      else if(to_upper(tokens[0])=="DROP"){
         o.select = parser_drop(); o.operation_type = "DROP";
     }
+    else{
+        o.operation_type = "INVALID";
+        o.error = DB_error(ERR_SYNTAX, "invalid syntax");
+    }
     
     return o;
 }

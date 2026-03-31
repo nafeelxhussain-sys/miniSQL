@@ -103,6 +103,10 @@ bool QueryOptimizer::is_heap(operation &o){
 AccessPath QueryOptimizer::optimise(operation &o){
     AccessPath acc_path;
 
+    if(!o.error.ok()){
+        return acc_path;
+    }
+
     string table_name = get_table_name(o);
 
     if(is_heap(o)&&((to_upper(o.operation_type)=="CREATE")||(to_upper(o.operation_type)=="DROP"))){ 
@@ -111,10 +115,19 @@ AccessPath QueryOptimizer::optimise(operation &o){
     else if(!is_heap(o)&&((to_upper(o.operation_type)=="CREATE")||(to_upper(o.operation_type)=="DROP"))){
         acc_path.type = no_scan; return acc_path;
     }
+    else if(to_upper(o.operation_type)=="SHOW"){
+        return acc_path;
+    }
+    else if(o.operation_type == "INVALID"){
+        return acc_path;
+    }
 
     //load schema
     schema s;
-    s.load_schema("main", table_name);
+    o.error = s.load_schema("main", table_name);
+    if(!o.error.ok()){
+        return acc_path;
+    }
 
     if(s.is_clustered) acc_path.type = full_scan;
     else {acc_path.type = heap; return acc_path;}
