@@ -37,7 +37,7 @@ DB_error schema::load_schema(string db_name, string table_name) {
     unsigned char buffer[512] = {'\0'};
 
     if (!in.is_open()) {
-        return DB_error(ERR_RUNTIME,"table " + table_name + "does not exists " );
+        return DB_error(ERR_RUNTIME,"table " + table_name + " does not exists " );
     }
 
     in.seekg(0, ios::end);
